@@ -1,0 +1,35 @@
+{
+  "version": "0.0.1",
+  "private": false,
+  "name": "jopi-mono",
+  "license": "MIT",
+  "homepage": "https://github.com/johanpiquet/jopi-mono",
+  "keywords": [],
+  "author": "Johan PIQUET",
+  "description": "An helper for hybrid apps",
+  "engines": {
+    "bun": "^1.2.18",
+    "node": ">=22.18.0"
+  },
+  "type": "module",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "npx tsgo",
+    "tsc": "tsc",
+    "start": "node ./dist/index.js"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/node": "latest",
+    "@types/mime-types": "latest"
+  },
+  "dependencies": {
+    "@types/ws": "^8.18.1",
+    "jsonc-parser": "^3.3.1",
+    "mime-types": "^3.0.1",
+    "ws": "^8.18.3"
+  },
+  "nodeSwitch": true,
+  "nodeSwitch-default": "node"
+}

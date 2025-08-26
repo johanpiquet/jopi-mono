@@ -1,0 +1,33 @@
+{
+  "compilerOptions": {
+    "sourceMap": true,
+    "declaration": true,
+
+    "outDir": "./dist",
+    "rootDir": "./src",
+
+    // Permet d'avoir des fonctions comme fetch.
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+
+    "target": "ES2020",
+    "module": "ESNext",
+    "moduleResolution": "Bundler",
+    "rewriteRelativeImportExtensions": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "strict": true,
+    "skipLibCheck": true,
+    "noEmitOnError": false,
+    "verbatimModuleSyntax": true,
+    "allowJs": false
+  },
+
+  "include": [
+    "./src/*.ts"
+  ],
+
+  "exclude": [
+    "node_modules",
+    "dist"
+  ]
+}
