@@ -5,3 +5,4 @@ temp
 .DS_Store
 __TODO.txt
 /.turbo/turbo-build.log
+dist
