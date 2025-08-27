@@ -3,6 +3,9 @@ import * as path from "node:path";
 import {modify, applyEdits, type EditResult} from 'jsonc-parser';
 import {execSync} from 'node:child_process';
 
+import yargs from 'yargs';
+import { hideBin } from 'yargs/helpers';
+
 /**
  * Find all package.json from here.
  */
@@ -74,7 +77,7 @@ async function patchPackage(pkg: PackageInfos, infos: Record<string, PackageInfo
 
     if (updated) {
         let output = applyEdits(jsonText, updated);
-        await fs.writeFile(pkg.filePath, output);
+        if (!FAKE) await fs.writeFile(pkg.filePath, output);
     }
 }
 
@@ -119,7 +122,7 @@ async function incrementVersion(mustIncr: string[], incrAll: boolean, infos: Rec
         let jsonText = await fs.readFile(pkg.filePath, "utf-8");
         let updated = modify(jsonText, ["version"], newVersion, {});
         let output = applyEdits(jsonText, updated);
-        await fs.writeFile(pkg.filePath, output);
+        if (!FAKE) await fs.writeFile(pkg.filePath, output);
     }
 }
 
@@ -132,7 +135,7 @@ async function publishPackage(mustPublish: string[], publishAll: boolean, infos:
             }
         }
 
-        if (pkg.version) {
+        if (pkg.version && !FAKE) {
             try {
                 const cwd = path.dirname(pkg.filePath);
                 execSync(PUBLISH_COMMAND, {stdio: 'ignore', cwd});
@@ -141,60 +144,54 @@ async function publishPackage(mustPublish: string[], publishAll: boolean, infos:
                 const exitCode = error.status || error.code || 1;
                 console.log(`❌  can't publish ${pkg.name}. Version ${pkg.version}`);
             }
+        } else if (FAKE) {
+            console.log(`✅  (fake) ${pkg.name} published with success. Version ${pkg.version}`);
         }
     }
 }
 
 async function exec() {
-    async function doIncr() {
-        let toProcess: string[];
-        let processAll = false;
+    let processAll = false;
+    if (!gArv.publish) gArv.publish = [];
+    if (gArv.publish.length) processAll = gArv.publish[0] === "*";
+    else return;
 
-        if (INCR) {
-            if (INCR instanceof Array) {
-                toProcess = INCR;
-            } else if (INCR === "*") {
-                processAll = true;
-                toProcess = [];
-            } else {
-                toProcess = [INCR];
-            }
-        } else {
-            toProcess = [];
-        }
+    let infos = await findPackageJsonFiles();
 
-        await incrementVersion(toProcess, processAll, infos);
-    }
-    
-    async function doPublish() {
-        let toProcess: string[];
-        let processAll = false;
-
-        if (PUBLISH) {
-            if (PUBLISH instanceof Array) {
-                toProcess = PUBLISH;
-            } else if (PUBLISH === "*") {
-                processAll = true;
-                toProcess = [];
-            } else {
-                toProcess = [PUBLISH];
-            }
-        } else {
-            toProcess = [];
-        }
-
-        await publishPackage(toProcess, processAll, infos);
-    }
-
-    let infos = await findPackageJsonFiles("/Users/johan/Projets/jopi-rewrite-workspace");
-    await doIncr();
+    if (gArv.incrRev) await incrementVersion(gArv.publish, processAll, infos);
     await setDependencies(infos);
-
-    await doPublish();
+    await publishPackage(gArv.publish, processAll, infos);
 }
 
-const INCR: string|string[] = "*";
-const PUBLISH: string|string[] = "*";
+// Interface for the parsed arguments
+interface Argv {
+    publish: string[];
+    incrRev: boolean;
+}
+
+let gArv: Argv;
+const FAKE = false;
+
+function parseCommandLineParams() {
+    gArv = yargs(hideBin(process.argv))
+        .option('publish', {
+            alias: 'p',
+            type: 'array',
+            description: 'A list of NPM package names to publish.',
+            demandOption: false, // This argument is required
+        })
+        .option('incr-rev', {
+            alias: 'r',
+            type: 'boolean',
+            default: true,
+            description: 'A list of package names for which to increment the revision version.',
+            demandOption: false, // Not required
+        })
+        .strict() // Reject unrecognized arguments
+        .parse() as Argv;
+}
+
 const PUBLISH_COMMAND = "bun publish";
 
+parseCommandLineParams();
 exec().then();
