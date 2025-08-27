@@ -18,4 +18,9 @@ and automatically re-build the package.
 
 ## How to use?
 
-TODO - The tool in actually a hack and run tool, and will become a real tool with command line parameters. 
+TODO - The tool in actually a hack and run tool, and will become a real tool with command line parameters.
+
+```
+jopi-mono update-versions jopi-rewrite jopi-rewrite-ui jopi-loader
+jopi-mono publish jopi-rewrite jopi-rewrite-ui jopi-loader --incr-revision
+```
