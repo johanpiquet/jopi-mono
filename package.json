@@ -25,6 +25,7 @@
     "build": "npx tsgo",
     "tsc": "tsc",
     "bun-publish": "npx tsc && bun publish",
+    "untrack": "git rm -r --cached -- ./dist/**;",
 
     "install-jopimono": "ln -s /Users/johan/Projets/jopi-rewrite-workspace/_others/jopi-mono/bin/jopimono.js ~/.nvm/versions/node/v24.5.0/bin/jopimono"
   },
