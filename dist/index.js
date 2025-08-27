@@ -131,6 +131,11 @@ async function exec() {
     else
         return;
     let infos = await findPackageJsonFiles();
+    gArv.publish.forEach(pkgName => {
+        if (!infos[pkgName]) {
+            console.log(`❌  ${pkgName} not found`);
+        }
+    });
     if (gArv.incrRev)
         await incrementVersion(gArv.publish, processAll, infos);
     await setDependencies(infos);
