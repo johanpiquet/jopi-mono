@@ -22,7 +22,7 @@
     "src"
   ],
   "scripts": {
-    "build": "npx tsgo",
+    "build": "npx tsc",
     "tsc": "tsc",
     "bun-publish": "npx tsc && bun publish",
     "untrack": "git rm -r --cached -- ./dist/**;",
