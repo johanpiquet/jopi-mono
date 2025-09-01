@@ -2,6 +2,7 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import {modify, applyEdits, type EditResult} from 'jsonc-parser';
 import {execSync} from 'node:child_process';
+import "jopi-node-space";
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -90,6 +91,7 @@ async function setDependencies(infos: Record<string, PackageInfos>) {
 async function incrementVersion(mustIncr: string[], incrAll: boolean, infos: Record<string, PackageInfos>) {
     for (let key in infos) {
         let pkg = infos[key];
+
         if (!incrAll) {
             if (!mustIncr.includes(pkg.name)) {
                 continue;
@@ -99,8 +101,8 @@ async function incrementVersion(mustIncr: string[], incrAll: boolean, infos: Rec
         let version = pkg.version;
 
         if (!version) {
-            console.warn(pkg.name + " has no version number");
-            return;
+            console.warn("⚠️ " + pkg.name + " has no version number");
+            continue;
         }
 
         let tag = "";
@@ -136,33 +138,49 @@ async function publishPackage(mustPublish: string[], publishAll: boolean, infos:
         }
 
         if (pkg.version && !FAKE) {
+            const cwd = path.resolve(path.dirname(pkg.filePath));
+            let output: Buffer<ArrayBufferLike>;
+
             try {
-                const cwd = path.dirname(pkg.filePath);
-                execSync(PUBLISH_COMMAND, {stdio: 'ignore', cwd});
+                output = execSync(PUBLISH_COMMAND, {stdio: 'pipe', cwd});
                 console.log(`✅  ${pkg.name} published with success. Version ${pkg.version}`);
             } catch (error: any) {
-                const exitCode = error.status || error.code || 1;
-                console.log(`❌  can't publish ${pkg.name}. Version ${pkg.version}`);
+                console.log(`❌  can't publish ${pkg.name}. Version ${pkg.version}`, error.message);
+                console.log("     |- Working dir:", cwd);
+                console.log("     |- Commande:", PUBLISH_COMMAND);
+                console.log("     |- Output:", output!.toString('utf8')
+                );
             }
         } else if (FAKE) {
             console.log(`✅  (fake) ${pkg.name} published with success. Version ${pkg.version}`);
         }
+
+        await NodeSpace.timer.tick(100);
     }
 }
 
 async function exec() {
     let processAll = false;
-    if (!gArv.publish) gArv.publish = [];
-    if (gArv.publish.length) processAll = gArv.publish[0] === "*";
-    else return;
+    if (!gArv.publish) gArv.publish = ["*"];
+
+    if (gArv.publish.length) {
+        processAll = gArv.publish[0] === "*";
+        if (processAll) gArv.publish = [];
+    }
+    else {
+        return;
+    }
 
     let infos = await findPackageJsonFiles();
 
-    gArv.publish.forEach(pkgName => {
+    gArv.publish = gArv.publish.filter(pkgName => {
         if (!infos[pkgName]) {
             console.log(`❌  ${pkgName} not found`);
+            return false;
         }
-    })
+
+        return true;
+    });
 
     if (gArv.incrRev) await incrementVersion(gArv.publish, processAll, infos);
     await setDependencies(infos);
@@ -184,7 +202,7 @@ function parseCommandLineParams() {
             alias: 'p',
             type: 'array',
             description: 'A list of NPM package names to publish.',
-            demandOption: false, // This argument is required
+            demandOption: false, // Not required
         })
         .option('incr-rev', {
             alias: 'r',
