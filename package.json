@@ -1,5 +1,5 @@
 {
-  "version": "1.0.4",
+  "version": "1.0.7",
   "private": false,
   "name": "jopi-mono",
   "license": "MIT",
@@ -41,7 +41,7 @@
     "mime-types": "^3.0.1",
     "ws": "^8.18.3",
     "yargs": "^18.0.0",
-    "jopi-node-space": "workspace:^1.1.4"
+    "jopi-node-space": "workspace:^1.1.7"
   },
   "bin": {
     "jopimono": "bin/jopimono.js"
