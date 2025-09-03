@@ -389,7 +389,7 @@ async function main() {
         }
 
         if (!gArv.packages.length) {
-            console.log("🛑  No packages need update. Quit. 🛑");
+            console.log("🛑  No packages needing update. Quit. 🛑");
         }
 
         let mustSetDependencies = false;
