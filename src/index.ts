@@ -93,59 +93,83 @@ async function findPackageJsonFiles(dir: string, result: Record<string, PackageI
         if (stats && stats.isFile()) {
             let cacheFile = await nFS.readTextFromFile(path.join(dir, ".jopiMonoCache"));
             let json = JSON.parse(cacheFile);
-            return json as Record<string, PackageInfos>;
+
+            if (json.registry===gNpmRegistry) {
+                return json.packages as Record<string, PackageInfos>;
+            }
         }
     }
     catch {
     }
 
-    let res = await search(dir, result);
-    await saveCache(res);
-
-    return res;
+    return await search(dir, result);
 }
 
-async function saveCache(infos: Record<string, PackageInfos>) {
+async function saveCache(pkgInfos: Record<string, PackageInfos>) {
+    let data = {
+        registry: gNpmRegistry,
+        packages: pkgInfos
+    };
+
     const cacheFilePath = path.join(gArv.cwd!, ".jopiMonoCache");
-    await nFS.writeTextToFile(cacheFilePath, JSON.stringify(infos, null, 2));
+    await nFS.writeTextToFile(cacheFilePath, JSON.stringify(data, null, 2));
 }
 
-async function patchPackage(pkg: PackageInfos, infos: Record<string, PackageInfos>) {
-    function patch(key: string, dependencies: Record<string, string>) {
-        if (!dependencies) return;
+async function setDependencies(infos: Record<string, PackageInfos>, isReverting = false) {
+    async function patchPackage(pkg: PackageInfos, infos: Record<string, PackageInfos>) {
+        function patch(key: string, dependencies: Record<string, string>) {
+            if (!dependencies) return;
 
-        for (let pkgName in dependencies) {
-            let pkgInfos = infos[pkgName];
+            for (let pkgName in dependencies) {
+                let pkgInfos = infos[pkgName];
 
-            if (pkgInfos) {
-                dependencies[pkgName] = "workspace:=" + pkgInfos.version;
+                if (pkgInfos) {
+                    if (!isReverting) {
+                        let currentVersion = dependencies[pkgName];
 
-                changes.push(() => {
-                    let newModif = modify(jsonText, [key, pkgName], "workspace:^" + pkgInfos.version, {})
-                    updated = updated ? updated.concat(newModif) : newModif;
-                });
+                        // Avoid updating the file if only the minor version has changed.
+                        // Doing this will avoid updating the package.json if no dependency
+                        // has a major / minor version update.
+                        //
+                        if (currentVersion.startsWith("workspace:^")) {
+                            let versionParts = pkgInfos.version.split(".");
+                            let prefix = "workspace:^" + versionParts[0] + "." + versionParts[1] + ".";
+
+                            if (currentVersion.startsWith(prefix)) {
+                                continue;
+                            }
+                        }
+                    }
+
+                    changes.push(() => {
+                        let version = isReverting ? pkgInfos.publicVersion : pkgInfos.version;
+                        let newModif = modify(jsonText, [key, pkgName], "workspace:^" + version, {})
+                        updated = updated ? updated.concat(newModif) : newModif;
+                    });
+                }
+            }
+        }
+
+        const changes: (()=>void)[] = [];
+
+        let jsonText = await fs.readFile(pkg.filePath, "utf-8");
+        let json = JSON.parse(jsonText);
+
+        patch("dependencies", json.dependencies);
+        patch("devDependencies", json.devDependencies);
+
+        let updated: EditResult | undefined;
+
+        if (changes.length) {
+            changes.forEach(c => c());
+
+            if (updated) {
+                let output = applyEdits(jsonText, updated);
+                await fs.writeFile(pkg.filePath, output);
             }
         }
     }
 
-    const changes: (()=>void)[] = [];
-
-    let jsonText = await fs.readFile(pkg.filePath, "utf-8");
-    let json = JSON.parse(jsonText);
-
-    patch("dependencies", json.dependencies);
-    patch("devDependencies", json.devDependencies);
-
-    let updated: EditResult|undefined;
-    changes.forEach(c => c());
-
-    if (updated) {
-        let output = applyEdits(jsonText, updated);
-        if (!gArv.fake) await fs.writeFile(pkg.filePath, output);
-    }
-}
-
-async function setDependencies(infos: Record<string, PackageInfos>) {
     for (let key in infos) {
         await patchPackage(infos[key], infos);
     }
@@ -184,14 +208,10 @@ async function incrementVersion(packages: string[], pkgInfos: Record<string, Pac
         let updated = modify(jsonText, ["version"], newVersion, {});
         let output = applyEdits(jsonText, updated);
 
-        if (!gArv.fake) {
-            await fs.writeFile(pkg.filePath, output);
-        }
+        await fs.writeFile(pkg.filePath, output);
     }
 
-    if (!gArv.fake) {
-        await saveCache(pkgInfos);
-    }
+    await saveCache(pkgInfos);
 }
 
 async function revertToPublicVersion(packages: string[], pkgInfos: Record<string, PackageInfos>) {
@@ -199,6 +219,7 @@ async function revertToPublicVersion(packages: string[], pkgInfos: Record<string
 
     for (let key in pkgInfos) {
         let pkg = pkgInfos[key];
+        if (pkg.name==="jopi-rewrite") debugger;
         if (!packages.includes(pkg.name)) continue;
         if (!pkg.publicVersion) continue;
 
@@ -212,10 +233,8 @@ async function revertToPublicVersion(packages: string[], pkgInfos: Record<string
         let updated = modify(jsonText, ["version"], pkg.version, {});
         let output = applyEdits(jsonText, updated);
 
-        if (!gArv.fake) {
-            hasChanges = true;
-            await fs.writeFile(pkg.filePath, output);
-        }
+        hasChanges = true;
+        await fs.writeFile(pkg.filePath, output);
     }
 
     // Clean the local cache.
@@ -228,9 +247,7 @@ async function revertToPublicVersion(packages: string[], pkgInfos: Record<string
         }
     }
 
-    if (!gArv.fake) {
-        await saveCache(pkgInfos);
-    }
+    await saveCache(pkgInfos);
 }
 
 async function printVersions(packages: string[], pkgInfos: Record<string, PackageInfos>) {
@@ -253,29 +270,30 @@ async function printVersions(packages: string[], pkgInfos: Record<string, Packag
     }
 }
 
-async function publishPackage(packages: string[], pkgInfos: Record<string, PackageInfos>) {
+async function publishPackages(packages: string[], pkgInfos: Record<string, PackageInfos>) {
     for (let key in pkgInfos) {
         let pkg = pkgInfos[key];
         if (!packages.includes(pkg.name)) continue;
 
-        if (pkg.version && !gArv.fake) {
+        if (pkg.isValidForPublish) {
             const cwd = path.resolve(path.dirname(pkg.filePath));
 
             let oldPublicVersion = pkg.publicVersion;
             let isPublic = gNpmRegistry===DEFAULT_NPM_REGISTRY;
 
-            if (isPublic) {
-                pkg.publicVersion = pkg.version;
-            }
-
             try {
-                execSync(PUBLISH_COMMAND, {stdio: 'pipe', cwd});
+                if (!gArv.fake) {
+                    if (isPublic) pkg.publicVersion = pkg.version;
+                    execSync(PUBLISH_COMMAND, {stdio: 'pipe', cwd});
+                }
+
+                let fakePrefix = gArv.fake ? "✅  [FAKE]" : "✅ ";
 
                 if (isPublic) {
-                    console.log(`✅  ${pkg.name} published publicly with success. Version ${oldPublicVersion} -> ${pkg.version}.`);
+                    console.log(fakePrefix, `${pkg.name} published publicly with success. Version ${oldPublicVersion} -> ${pkg.version}.`);
                 }
                 else {
-                    console.log(`✅  ${pkg.name} published privately with success. Private version ${pkg.version}, public ${oldPublicVersion || "(not published)"}`);
+                    console.log(fakePrefix, `${pkg.name} published privately with success. Private version ${pkg.version}, public ${oldPublicVersion || "(not published)"}`);
                 }
             } catch (error: any) {
                 if (error.message.includes("409")) {
@@ -286,8 +304,6 @@ async function publishPackage(packages: string[], pkgInfos: Record<string, Packa
                     console.log("     |- Error:", error.message);
                 }
             }
-        } else if (gArv.fake) {
-            console.log(`✅  (fake) ${pkg.name} published with success. Version ${pkg.version}`);
         }
 
         pkg.checksum = await getPackageCheckSum(pkg);
@@ -295,9 +311,7 @@ async function publishPackage(packages: string[], pkgInfos: Record<string, Packa
         await NodeSpace.timer.tick(100);
     }
 
-    if (!gArv.fake) {
-        await saveCache(pkgInfos);
-    }
+    await saveCache(pkgInfos);
 }
 
 async function getPackageCheckSum(pkg: PackageInfos): Promise<string|undefined> {
@@ -331,14 +345,8 @@ async function detectUpdatedPackages(pkgInfos: Record<string, PackageInfos>): Pr
         let checksum = await getPackageCheckSum(pkg);
 
         if (checksum && (pkg.checksum !== checksum)) {
-            //pkg.checksum = checksum;
             updatedPackages.push(pkg.name);
-            //console.log(pkg.name, "is selected");
         }
-    }
-
-    if (!gArv.fake) {
-        await saveCache(pkgInfos);
     }
 
     return updatedPackages;
@@ -360,16 +368,14 @@ async function main() {
 
     if (gArv.versions) {
         await printVersions(gArv.packages, pkgInfos)
-    } else {
-        let mustSetDependencies = false;
-
-        if (gArv.revertPublicVersion) {
-            await revertToPublicVersion(gArv.packages, pkgInfos);
-            mustSetDependencies = true;
-        }
-
+    } if (gArv.revertPublicVersion) {
+        await revertToPublicVersion(gArv.packages, pkgInfos);
+        await setDependencies(pkgInfos, true);
+        return;
+    }
+    else {
         if (mustAutoSelectPackaged) {
-            gArv.packages = await detectUpdatedPackages(pkgInfos)
+            gArv.packages = await detectUpdatedPackages(pkgInfos);
         }
         else {
             gArv.packages = gArv.packages.filter(pkgName => {
@@ -386,6 +392,8 @@ async function main() {
             console.log("🛑  No packages need update. Quit. 🛑");
         }
 
+        let mustSetDependencies = false;
+
         if (gArv.incrRev) {
             await incrementVersion(gArv.packages, pkgInfos);
             mustSetDependencies = true;
@@ -396,7 +404,7 @@ async function main() {
         }
 
         if (gArv.publish) {
-            await publishPackage(gArv.packages, pkgInfos);
+            await publishPackages(gArv.packages, pkgInfos);
         }
     }
 }
@@ -465,7 +473,7 @@ async function parseCommandLineParams() {
         .option("fake", {
             type: 'boolean',
             default: false,
-            description: "Don't do real changes, will only test.",
+            description: "Don't do real changes on the registry, will only update local files.",
         })
         .strict() // Reject unrecognized arguments
         .parse() as Argv;
@@ -512,10 +520,6 @@ async function searchWorkspaceDir(): Promise<string> {
     return process.cwd();
 }
 
-const PUBLISH_COMMAND = "bun publish";
-const NPM_CONFIG_FILE = ".npmrc";
-const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
-
 async function getNpmConfig(): Promise<string> {
     const homeDir = os.homedir();
 
@@ -541,6 +545,11 @@ async function getNpmConfig(): Promise<string> {
 
     return DEFAULT_NPM_REGISTRY;
 }
+
+
+const PUBLISH_COMMAND = "bun publish --access public";
+const NPM_CONFIG_FILE = ".npmrc";
+const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
 
 let gArv: Argv;
 let gNpmRegistry: string;
