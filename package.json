@@ -1,5 +1,5 @@
 {
-  "version": "1.0.7",
+  "version": "1.0.18",
   "private": false,
   "name": "jopi-mono",
   "license": "MIT",
@@ -29,7 +29,7 @@
 
     "install-jopimono": "rm ~/.bun/bin/jopimono; ln -s /Users/johan/Projets/jopi-rewrite-workspace/_others/jopi-mono/bin/jopimono.js ~/.bun/bin/jopimono",
 
-    "test1": "node ./dist/index.js --fake --versions --cwd ../.."
+    "test1": "npx tsc; node ./dist/index.js --cwd ../.. --all-packages --publish --incr-rev"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -43,7 +43,7 @@
     "mime-types": "^3.0.1",
     "ws": "^8.18.3",
     "yargs": "^18.0.0",
-    "jopi-node-space": "workspace:^1.1.7"
+    "jopi-node-space": "workspace:^0.0.18"
   },
   "bin": {
     "jopimono": "bin/jopimono.js"

@@ -1,11 +1,12 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
-import {modify, applyEdits, type EditResult} from 'jsonc-parser';
+import * as os from "node:os";
+import {applyEdits, type EditResult, modify} from 'jsonc-parser';
 import {execSync} from 'node:child_process';
 import "jopi-node-space";
 
 import yargs from 'yargs';
-import { hideBin } from 'yargs/helpers';
+import {hideBin} from 'yargs/helpers';
 
 const nFS = NodeSpace.fs;
 
@@ -14,6 +15,9 @@ interface PackageInfos {
     version: string;
     filePath: string;
     publicVersion?: string;
+    checksum?: string;
+    isPrivate: boolean;
+    isValidForPublish: boolean;
 }
 
 /**
@@ -25,25 +29,36 @@ async function findPackageJsonFiles(dir: string, result: Record<string, PackageI
         let pkgJson = JSON.parse(fileContent);
         let publicVersion: string|undefined;
 
-        if (pkgJson.private!==true) {
+        let isValidForPublish = true;
+        if (pkgJson.isPrivate) isValidForPublish = false;
+        else if (!pkgJson.name) isValidForPublish = false;
+        else if (!pkgJson.version) isValidForPublish = false;
+
+        if (isValidForPublish) {
             // Get the public version number of the package.
             //
             try {
-                let sVersions = execSync(`npm view ${pkgJson.name} versions`, {stdio: 'pipe'}).toString();
-                //
-                sVersions = sVersions.replaceAll(`'`, `"`);
-                let json = JSON.parse(sVersions);
-                publicVersion = json.pop();
+                const response = await fetch(`https://registry.npmjs.org/${pkgJson.name}`);
+
+                if (response.ok) {
+                    const packageData = await response.json();
+                    const versions = Object.keys(packageData.versions || {});
+                    publicVersion = versions.length > 0 ? versions[versions.length - 1] : undefined;
+                } else {
+                    publicVersion = undefined;
+                }
             } catch (error) {
-                //console.log(`❌  Could get public version of ${pkgJson.name}`);
+                //console.log(`❌  Can't get a public version of ${pkgJson.name}`);
                 publicVersion = undefined;
             }
         } else {
-            console.log(`⚠️  Package ${pkgJson.name} is not public.`);
+            console.log(`⚠️  Package ${pkgJson.name} is not publishable.`);
         }
 
         return {
             filePath,
+            isPrivate: pkgJson.private===true,
+            isValidForPublish,
             name: pkgJson.name,
             version: pkgJson.version,
             publicVersion: publicVersion
@@ -75,7 +90,7 @@ async function findPackageJsonFiles(dir: string, result: Record<string, PackageI
     try {
         let stats = await nFS.getFileStat(cacheFilePath);
 
-        if (stats && stats.isFile() && stats.mtimeMs > (Date.now() - NodeSpace.timer.ONE_HOUR)) {
+        if (stats && stats.isFile()) {
             let cacheFile = await nFS.readTextFromFile(path.join(dir, ".jopiMonoCache"));
             let json = JSON.parse(cacheFile);
             return json as Record<string, PackageInfos>;
@@ -85,9 +100,14 @@ async function findPackageJsonFiles(dir: string, result: Record<string, PackageI
     }
 
     let res = await search(dir, result);
-    await nFS.writeTextToFile(cacheFilePath, JSON.stringify(res, null, 2));
+    await saveCache(res);
 
     return res;
+}
+
+async function saveCache(infos: Record<string, PackageInfos>) {
+    const cacheFilePath = path.join(gArv.cwd, ".jopiMonoCache");
+    await nFS.writeTextToFile(cacheFilePath, JSON.stringify(infos, null, 2));
 }
 
 async function patchPackage(pkg: PackageInfos, infos: Record<string, PackageInfos>) {
@@ -158,11 +178,58 @@ async function incrementVersion(packages: string[], pkgInfos: Record<string, Pac
 
         let newVersion = sMajor + "." + sMinor + "." + (parseInt(sRev) + 1) + tag;
         pkg.version = newVersion;
+        //console.log("Package", pkg.name, "is now version", pkg.version);
 
         let jsonText = await fs.readFile(pkg.filePath, "utf-8");
         let updated = modify(jsonText, ["version"], newVersion, {});
         let output = applyEdits(jsonText, updated);
-        if (!gArv.fake) await fs.writeFile(pkg.filePath, output);
+
+        if (!gArv.fake) {
+            await fs.writeFile(pkg.filePath, output);
+        }
+    }
+
+    if (!gArv.fake) {
+        await saveCache(pkgInfos);
+    }
+}
+
+async function revertToPublicVersion(packages: string[], pkgInfos: Record<string, PackageInfos>) {
+    let hasChanges = false;
+
+    for (let key in pkgInfos) {
+        let pkg = pkgInfos[key];
+        if (!packages.includes(pkg.name)) continue;
+        if (!pkg.publicVersion) continue;
+
+        let version = pkg.version;
+        if (version === pkg.publicVersion) continue;
+
+        console.log(`👍  Package ${pkg.name} reverted from ${pkg.version} to ${pkg.publicVersion}`);
+        pkg.version = pkg.publicVersion;
+
+        let jsonText = await fs.readFile(pkg.filePath, "utf-8");
+        let updated = modify(jsonText, ["version"], pkg.version, {});
+        let output = applyEdits(jsonText, updated);
+
+        if (!gArv.fake) {
+            hasChanges = true;
+            await fs.writeFile(pkg.filePath, output);
+        }
+    }
+
+    // Clean the local cache.
+    //
+    if (hasChanges) {
+        try {
+            execSync("bun pm cache rm");
+        } catch (e) {
+            console.error("Can't clean local cache", e);
+        }
+    }
+
+    if (!gArv.fake) {
+        await saveCache(pkgInfos);
     }
 }
 
@@ -193,28 +260,93 @@ async function publishPackage(packages: string[], pkgInfos: Record<string, Packa
 
         if (pkg.version && !gArv.fake) {
             const cwd = path.resolve(path.dirname(pkg.filePath));
-            let output: Buffer<ArrayBufferLike>;
+
+            let oldPublicVersion = pkg.publicVersion;
+            let isPublic = gNpmRegistry===DEFAULT_NPM_REGISTRY;
+
+            if (isPublic) {
+                pkg.publicVersion = pkg.version;
+            }
 
             try {
-                output = execSync(PUBLISH_COMMAND, {stdio: 'pipe', cwd});
-                console.log(`✅  ${pkg.name} published with success. Version ${pkg.version}. Public ${pkg.version}`);
+                execSync(PUBLISH_COMMAND, {stdio: 'pipe', cwd});
+
+                if (isPublic) {
+                    console.log(`✅  ${pkg.name} published publicly with success. Version ${oldPublicVersion} -> ${pkg.version}.`);
+                }
+                else {
+                    console.log(`✅  ${pkg.name} published privately with success. Private version ${pkg.version}, public ${oldPublicVersion || "(not published)"}`);
+                }
             } catch (error: any) {
-                console.log(`❌  can't publish ${pkg.name}. Version ${pkg.version}`, error.message);
-                console.log("     |- Working dir:", cwd);
-                console.log("     |- Commande:", PUBLISH_COMMAND);
-                console.log("     |- Output:", output!.toString('utf8')
-                );
+                if (error.message.includes("409")) {
+                    console.log(`❌  Version conflict when publishing ${pkg.name}. Version ${pkg.version}`);
+                } else {
+                    console.log(`❌  Can't publish ${pkg.name}. Version ${pkg.version}`);
+                    console.log("     |- Working dir:", cwd);
+                    console.log("     |- Error:", error.message);
+                }
             }
         } else if (gArv.fake) {
             console.log(`✅  (fake) ${pkg.name} published with success. Version ${pkg.version}`);
         }
 
+        pkg.checksum = await getPackageCheckSum(pkg);
+
         await NodeSpace.timer.tick(100);
     }
+
+    if (!gArv.fake) {
+        await saveCache(pkgInfos);
+    }
+}
+
+async function getPackageCheckSum(pkg: PackageInfos): Promise<string|undefined> {
+    if (!pkg.isValidForPublish) return undefined;
+
+    const cwd = path.dirname(pkg.filePath);
+
+    try {
+        const output = execSync('npm pack --dry-run --json', {stdio: 'pipe', cwd}).toString();
+        const packInfo = JSON.parse(output);
+
+        if (packInfo && packInfo.length > 0) {
+            return packInfo[0].integrity;
+        }
+    } catch(e) {
+        console.error(`❌  Failed to get package checksum for ${pkg.name}`, e);
+    }
+
+    return undefined;
+}
+
+/**
+ * Return a list of packages which content is updated.
+ * Which means that if doing a dry-run, then
+ */
+async function detectUpdatedPackages(pkgInfos: Record<string, PackageInfos>): Promise<string[]> {
+    const updatedPackages: string[] = [];
+
+    for (const key in pkgInfos) {
+        const pkg = pkgInfos[key];
+        let checksum = await getPackageCheckSum(pkg);
+
+        if (checksum && (pkg.checksum !== checksum)) {
+            //pkg.checksum = checksum;
+            updatedPackages.push(pkg.name);
+            //console.log(pkg.name, "is selected");
+        }
+    }
+
+    if (!gArv.fake) {
+        await saveCache(pkgInfos);
+    }
+
+    return updatedPackages;
 }
 
 async function main() {
     gArv.cwd = path.resolve(gArv.cwd);
+    gNpmRegistry = await getNpmConfig();
 
     let allPackages = gArv.allPackages;
     if (!gArv.packages) gArv.packages = [];
@@ -223,22 +355,35 @@ async function main() {
 
     if (allPackages || !gArv.packages.length) {
         gArv.allPackages = true;
-        gArv.packages = Object.keys(infos);
+        gArv.packages = await detectUpdatedPackages(infos)
     }
-    else gArv.packages = gArv.packages.filter(pkgName => {
-        if (!infos[pkgName]) {
-            console.log(`❌  ${pkgName} not found`);
-            return false;
-        }
+    else {
+        gArv.packages = gArv.packages.filter(pkgName => {
+            if (!infos[pkgName]) {
+                console.log(`❌  ${pkgName} not found`);
+                return false;
+            }
 
-        return true;
-    });
+            return true;
+        });
+    }
 
     if (gArv.versions) {
         await printVersions(gArv.packages, infos)
     } else {
+        let mustSetDependencies = false;
+
+        if (gArv.revertPublicVersion) {
+            await revertToPublicVersion(gArv.packages, infos);
+            mustSetDependencies = true;
+        }
+
         if (gArv.incrRev) {
             await incrementVersion(gArv.packages, infos);
+            mustSetDependencies = true;
+        }
+
+        if (mustSetDependencies) {
             await setDependencies(infos);
         }
 
@@ -264,8 +409,6 @@ interface Argv {
     versions: boolean;
     fake: boolean;
 }
-
-let gArv: Argv;
 
 function parseCommandLineParams() {
     gArv = yargs(hideBin(process.argv))
@@ -325,6 +468,37 @@ function parseCommandLineParams() {
 }
 
 const PUBLISH_COMMAND = "bun publish";
+const NPM_CONFIG_FILE = ".npmrc";
+const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
+
+async function getNpmConfig(): Promise<string> {
+    const homeDir = os.homedir();
+
+    const npmrcPaths = [
+        path.join(gArv.cwd, NPM_CONFIG_FILE),
+        path.join(homeDir, NPM_CONFIG_FILE)
+    ];
+
+    for (const configPath of npmrcPaths) {
+        try {
+            const content = await fs.readFile(configPath, 'utf8');
+            const lines = content.split('\n');
+
+            for (const line of lines) {
+                const [key, value] = line.split('=').map(s => s.trim());
+                if (key === 'registry') {
+                    return value;
+                }
+            }
+        } catch {
+        }
+    }
+
+    return DEFAULT_NPM_REGISTRY;
+}
+
+let gArv: Argv;
+let gNpmRegistry: string;
 
 parseCommandLineParams();
 //console.log(gArv!);
