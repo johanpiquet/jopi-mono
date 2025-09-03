@@ -7,44 +7,87 @@ import "jopi-node-space";
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 
-/**
- * Find all package.json from here.
- */
-async function findPackageJsonFiles(dir: string = process.cwd(), result: Record<string, PackageInfos> = {}): Promise<Record<string, PackageInfos>> {
-    async function extractPackageInfos(filePath: string): Promise<PackageInfos> {
-        let fileContent = await fs.readFile(filePath, "utf8");
-        let json = JSON.parse(fileContent);
-
-        return {
-            filePath,
-            name: json.name,
-            version: json.version
-        }
-    }
-
-    const files = await fs.readdir(dir);
-
-    for (const file of files) {
-        const fullPath = path.join(dir, file);
-        const stat = await fs.stat(fullPath);
-
-        if (stat.isDirectory()) {
-            if (file !== 'node_modules') {
-                await findPackageJsonFiles(fullPath, result);
-            }
-        } else if (file === 'package.json') {
-            let infos = await extractPackageInfos(path.relative(process.cwd(), fullPath));
-            result[infos.name] = infos;
-        }
-    }
-
-    return result;
-}
+const nFS = NodeSpace.fs;
 
 interface PackageInfos {
     name: string;
     version: string;
     filePath: string;
+    publicVersion?: string;
+}
+
+/**
+ * Find all package.json from here.
+ */
+async function findPackageJsonFiles(dir: string, result: Record<string, PackageInfos> = {}): Promise<Record<string, PackageInfos>> {
+    async function extractPackageInfos(filePath: string): Promise<PackageInfos> {
+        let fileContent = await fs.readFile(filePath, "utf8");
+        let pkgJson = JSON.parse(fileContent);
+        let publicVersion: string|undefined;
+
+        if (pkgJson.private!==true) {
+            // Get the public version number of the package.
+            //
+            try {
+                let sVersions = execSync(`npm view ${pkgJson.name} versions`, {stdio: 'pipe'}).toString();
+                //
+                sVersions = sVersions.replaceAll(`'`, `"`);
+                let json = JSON.parse(sVersions);
+                publicVersion = json.pop();
+            } catch (error) {
+                //console.log(`❌  Could get public version of ${pkgJson.name}`);
+                publicVersion = undefined;
+            }
+        } else {
+            console.log(`⚠️  Package ${pkgJson.name} is not public.`);
+        }
+
+        return {
+            filePath,
+            name: pkgJson.name,
+            version: pkgJson.version,
+            publicVersion: publicVersion
+        }
+    }
+
+    async function search(dir: string, result: Record<string, PackageInfos>) {
+        const files = await fs.readdir(dir);
+
+        for (const file of files) {
+            const fullPath = path.join(dir, file);
+            const stat = await fs.stat(fullPath);
+
+            if (stat.isDirectory()) {
+                if (file !== 'node_modules') {
+                    await search(fullPath, result);
+                }
+            } else if (file === 'package.json') {
+                let infos = await extractPackageInfos(fullPath);
+                result[infos.name] = infos;
+            }
+        }
+
+        return result;
+    }
+
+    const cacheFilePath = path.join(dir, ".jopiMonoCache");
+
+    try {
+        let stats = await nFS.getFileStat(cacheFilePath);
+
+        if (stats && stats.isFile() && stats.mtimeMs > (Date.now() - NodeSpace.timer.ONE_HOUR)) {
+            let cacheFile = await nFS.readTextFromFile(path.join(dir, ".jopiMonoCache"));
+            let json = JSON.parse(cacheFile);
+            return json as Record<string, PackageInfos>;
+        }
+    }
+    catch {
+    }
+
+    let res = await search(dir, result);
+    await nFS.writeTextToFile(cacheFilePath, JSON.stringify(res, null, 2));
+
+    return res;
 }
 
 async function patchPackage(pkg: PackageInfos, infos: Record<string, PackageInfos>) {
@@ -78,7 +121,7 @@ async function patchPackage(pkg: PackageInfos, infos: Record<string, PackageInfo
 
     if (updated) {
         let output = applyEdits(jsonText, updated);
-        if (!FAKE) await fs.writeFile(pkg.filePath, output);
+        if (!gArv.fake) await fs.writeFile(pkg.filePath, output);
     }
 }
 
@@ -88,15 +131,10 @@ async function setDependencies(infos: Record<string, PackageInfos>) {
     }
 }
 
-async function incrementVersion(mustIncr: string[], incrAll: boolean, infos: Record<string, PackageInfos>) {
-    for (let key in infos) {
-        let pkg = infos[key];
-
-        if (!incrAll) {
-            if (!mustIncr.includes(pkg.name)) {
-                continue;
-            }
-        }
+async function incrementVersion(packages: string[], pkgInfos: Record<string, PackageInfos>) {
+    for (let key in pkgInfos) {
+        let pkg = pkgInfos[key];
+        if (!packages.includes(pkg.name)) continue;
 
         let version = pkg.version;
 
@@ -124,26 +162,42 @@ async function incrementVersion(mustIncr: string[], incrAll: boolean, infos: Rec
         let jsonText = await fs.readFile(pkg.filePath, "utf-8");
         let updated = modify(jsonText, ["version"], newVersion, {});
         let output = applyEdits(jsonText, updated);
-        if (!FAKE) await fs.writeFile(pkg.filePath, output);
+        if (!gArv.fake) await fs.writeFile(pkg.filePath, output);
     }
 }
 
-async function publishPackage(mustPublish: string[], publishAll: boolean, infos: Record<string, PackageInfos>) {
-    for (let key in infos) {
-        let pkg = infos[key];
-        if (!publishAll) {
-            if (!mustPublish.includes(pkg.name)) {
-                continue;
-            }
-        }
+async function printVersions(packages: string[], pkgInfos: Record<string, PackageInfos>) {
+    for (let key in pkgInfos) {
+        let pkg = pkgInfos[key];
+        if (!packages.includes(pkg.name)) continue;
 
-        if (pkg.version && !FAKE) {
+        if (pkg.version) {
+            console.log(`✅  Public version of ${pkg.name} is ${pkg.version}`);
+        }
+    }
+
+    for (let key in pkgInfos) {
+        let pkg = pkgInfos[key];
+        if (!packages.includes(pkg.name)) continue;
+
+        if (!pkg.version) {
+            console.log(`👎  Package ${pkg.name} has no public version`);
+        }
+    }
+}
+
+async function publishPackage(packages: string[], pkgInfos: Record<string, PackageInfos>) {
+    for (let key in pkgInfos) {
+        let pkg = pkgInfos[key];
+        if (!packages.includes(pkg.name)) continue;
+
+        if (pkg.version && !gArv.fake) {
             const cwd = path.resolve(path.dirname(pkg.filePath));
             let output: Buffer<ArrayBufferLike>;
 
             try {
                 output = execSync(PUBLISH_COMMAND, {stdio: 'pipe', cwd});
-                console.log(`✅  ${pkg.name} published with success. Version ${pkg.version}`);
+                console.log(`✅  ${pkg.name} published with success. Version ${pkg.version}. Public ${pkg.version}`);
             } catch (error: any) {
                 console.log(`❌  can't publish ${pkg.name}. Version ${pkg.version}`, error.message);
                 console.log("     |- Working dir:", cwd);
@@ -151,7 +205,7 @@ async function publishPackage(mustPublish: string[], publishAll: boolean, infos:
                 console.log("     |- Output:", output!.toString('utf8')
                 );
             }
-        } else if (FAKE) {
+        } else if (gArv.fake) {
             console.log(`✅  (fake) ${pkg.name} published with success. Version ${pkg.version}`);
         }
 
@@ -159,21 +213,19 @@ async function publishPackage(mustPublish: string[], publishAll: boolean, infos:
     }
 }
 
-async function exec() {
-    let processAll = false;
-    if (!gArv.publish) gArv.publish = ["*"];
+async function main() {
+    gArv.cwd = path.resolve(gArv.cwd);
 
-    if (gArv.publish.length) {
-        processAll = gArv.publish[0] === "*";
-        if (processAll) gArv.publish = [];
+    let allPackages = gArv.allPackages;
+    if (!gArv.packages) gArv.packages = [];
+
+    let infos = await findPackageJsonFiles(gArv.cwd);
+
+    if (allPackages || !gArv.packages.length) {
+        gArv.allPackages = true;
+        gArv.packages = Object.keys(infos);
     }
-    else {
-        return;
-    }
-
-    let infos = await findPackageJsonFiles();
-
-    gArv.publish = gArv.publish.filter(pkgName => {
+    else gArv.packages = gArv.packages.filter(pkgName => {
         if (!infos[pkgName]) {
             console.log(`❌  ${pkgName} not found`);
             return false;
@@ -182,34 +234,91 @@ async function exec() {
         return true;
     });
 
-    if (gArv.incrRev) await incrementVersion(gArv.publish, processAll, infos);
-    await setDependencies(infos);
-    await publishPackage(gArv.publish, processAll, infos);
+    if (gArv.versions) {
+        await printVersions(gArv.packages, infos)
+    } else {
+        if (gArv.incrRev) {
+            await incrementVersion(gArv.packages, infos);
+            await setDependencies(infos);
+        }
+
+        if (gArv.publish) {
+            await publishPackage(gArv.packages, infos);
+        }
+    }
 }
 
 // Interface for the parsed arguments
 interface Argv {
-    publish: string[];
+    // > Datas
+
+    packages: string[];
+    allPackages: boolean;
+    cwd: string;
+
+    // > Commandes
+
     incrRev: boolean;
+    revertPublicVersion: boolean;
+    publish: boolean;
+    versions: boolean;
+    fake: boolean;
 }
 
 let gArv: Argv;
-const FAKE = false;
 
 function parseCommandLineParams() {
     gArv = yargs(hideBin(process.argv))
         .option('publish', {
-            alias: 'p',
+            type: 'boolean',
+            default: false,
+            description: 'Ask to publish the packages.',
+            demandOption: false, // Not required
+        })
+        .option('packages', {
             type: 'array',
-            description: 'A list of NPM package names to publish.',
+            default: [],
+            description: 'A list of workspace packages to used.',
+            demandOption: false, // Not required
+        })
+        .option("cwd", {
+            description: "Allow forcing the current working directory",
+            default: process.cwd()
+        })
+        .option('all-packages', {
+            type: 'boolean',
+            default: false,
+            description: 'Allow to use all workspace packages.',
+            demandOption: false, // Not required
+        })
+        .option('publish-all', {
+            type: 'boolean',
+            default: false,
+            description: 'Allow publish all packages.',
+            demandOption: false, // Not required
+        })
+        .option("versions", {
+            type: 'boolean',
+            default: false,
+            description: 'Print the public version of all packages.',
+            demandOption: false, // Not required
+        })
+        .option("revert-public-version", {
+            type: 'boolean',
+            default: false,
+            description: 'Revert the version number to the public version number.',
             demandOption: false, // Not required
         })
         .option('incr-rev', {
-            alias: 'r',
             type: 'boolean',
-            default: true,
+            default: false,
             description: 'A list of package names for which to increment the revision version.',
             demandOption: false, // Not required
+        })
+        .option("fake", {
+            type: 'boolean',
+            default: false,
+            description: "Don't do real changes, will only test.",
         })
         .strict() // Reject unrecognized arguments
         .parse() as Argv;
@@ -218,4 +327,5 @@ function parseCommandLineParams() {
 const PUBLISH_COMMAND = "bun publish";
 
 parseCommandLineParams();
-exec().then();
+//console.log(gArv!);
+main().then();
