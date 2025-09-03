@@ -1,5 +1,5 @@
 {
-  "version": "1.0.18",
+  "version": "1.0.22",
   "private": false,
   "name": "jopi-mono",
   "license": "MIT",
@@ -29,8 +29,8 @@
 
     "install-jopimono": "rm ~/.bun/bin/jopimono; ln -s /Users/johan/Projets/jopi-rewrite-workspace/_others/jopi-mono/bin/jopimono.js ~/.bun/bin/jopimono",
 
-    "test-publish": "npx tsc; node ./dist/index.js --cwd ../.. --all-packages --publish --incr-rev",
-    "test-revert": "npx tsc; node ./dist/index.js --cwd --revert-public-version --all-packages"
+    "test-publish": "npx tsc; node ./dist/index.js --publish",
+    "test-revert": "npx tsc; node ./dist/index.js --revert-public-version"
   },
   "devDependencies": {
     "@types/bun": "latest",

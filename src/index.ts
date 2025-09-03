@@ -106,7 +106,7 @@ async function findPackageJsonFiles(dir: string, result: Record<string, PackageI
 }
 
 async function saveCache(infos: Record<string, PackageInfos>) {
-    const cacheFilePath = path.join(gArv.cwd, ".jopiMonoCache");
+    const cacheFilePath = path.join(gArv.cwd!, ".jopiMonoCache");
     await nFS.writeTextToFile(cacheFilePath, JSON.stringify(infos, null, 2));
 }
 
@@ -345,50 +345,58 @@ async function detectUpdatedPackages(pkgInfos: Record<string, PackageInfos>): Pr
 }
 
 async function main() {
-    gArv.cwd = path.resolve(gArv.cwd);
+    await parseCommandLineParams();
+    
     gNpmRegistry = await getNpmConfig();
-
     let allPackages = gArv.allPackages;
-    if (!gArv.packages) gArv.packages = [];
+    let pkgInfos = await findPackageJsonFiles(gArv.cwd!);
 
-    let infos = await findPackageJsonFiles(gArv.cwd);
+    let mustAutoSelectPackaged = allPackages || !gArv.packages.length;
 
-    if (allPackages || !gArv.packages.length) {
+    if (mustAutoSelectPackaged) {
         gArv.allPackages = true;
-        gArv.packages = await detectUpdatedPackages(infos)
-    }
-    else {
-        gArv.packages = gArv.packages.filter(pkgName => {
-            if (!infos[pkgName]) {
-                console.log(`❌  ${pkgName} not found`);
-                return false;
-            }
-
-            return true;
-        });
+        gArv.packages = Object.keys(pkgInfos);
     }
 
     if (gArv.versions) {
-        await printVersions(gArv.packages, infos)
+        await printVersions(gArv.packages, pkgInfos)
     } else {
         let mustSetDependencies = false;
 
         if (gArv.revertPublicVersion) {
-            await revertToPublicVersion(gArv.packages, infos);
+            await revertToPublicVersion(gArv.packages, pkgInfos);
             mustSetDependencies = true;
         }
 
+        if (mustAutoSelectPackaged) {
+            gArv.packages = await detectUpdatedPackages(pkgInfos)
+        }
+        else {
+            gArv.packages = gArv.packages.filter(pkgName => {
+                if (!pkgInfos[pkgName]) {
+                    console.log(`❌  ${pkgName} not found`);
+                    return false;
+                }
+
+                return true;
+            });
+        }
+
+        if (!gArv.packages.length) {
+            console.log("🛑  No packages need update. Quit. 🛑");
+        }
+
         if (gArv.incrRev) {
-            await incrementVersion(gArv.packages, infos);
+            await incrementVersion(gArv.packages, pkgInfos);
             mustSetDependencies = true;
         }
 
         if (mustSetDependencies) {
-            await setDependencies(infos);
+            await setDependencies(pkgInfos);
         }
 
         if (gArv.publish) {
-            await publishPackage(gArv.packages, infos);
+            await publishPackage(gArv.packages, pkgInfos);
         }
     }
 }
@@ -399,7 +407,7 @@ interface Argv {
 
     packages: string[];
     allPackages: boolean;
-    cwd: string;
+    cwd?: string;
 
     // > Commandes
 
@@ -410,7 +418,7 @@ interface Argv {
     fake: boolean;
 }
 
-function parseCommandLineParams() {
+async function parseCommandLineParams() {
     gArv = yargs(hideBin(process.argv))
         .option('publish', {
             type: 'boolean',
@@ -423,10 +431,6 @@ function parseCommandLineParams() {
             default: [],
             description: 'A list of workspace packages to used.',
             demandOption: false, // Not required
-        })
-        .option("cwd", {
-            description: "Allow forcing the current working directory",
-            default: process.cwd()
         })
         .option('all-packages', {
             type: 'boolean',
@@ -465,6 +469,47 @@ function parseCommandLineParams() {
         })
         .strict() // Reject unrecognized arguments
         .parse() as Argv;
+
+    gArv.cwd = await searchWorkspaceDir();
+
+    if (!gArv.cwd) {
+        console.log("Error: no workspace found");
+        process.exit(1);
+    }
+
+    if (!gArv.allPackages && !gArv.packages.length) {
+        gArv.allPackages = true;
+    }
+
+    if (gArv.publish) {
+        gArv.incrRev = true;
+    }
+
+    gArv.cwd = path.resolve(gArv.cwd);
+    if (!gArv.packages) gArv.packages = [];
+}
+
+async function searchWorkspaceDir(): Promise<string> {
+    let currentDir = process.cwd();
+
+    while (currentDir !== path.parse(currentDir).root) {
+        const packageJsonPath = path.join(currentDir, 'package.json');
+
+        try {
+            const content = await fs.readFile(packageJsonPath, 'utf8');
+            const packageJson = JSON.parse(content);
+
+            if (packageJson.workspaces) {
+                return currentDir;
+            }
+        } catch {
+            // Continue if file doesn't exist or can't be parsed
+        }
+
+        currentDir = path.dirname(currentDir);
+    }
+
+    return process.cwd();
 }
 
 const PUBLISH_COMMAND = "bun publish";
@@ -475,7 +520,7 @@ async function getNpmConfig(): Promise<string> {
     const homeDir = os.homedir();
 
     const npmrcPaths = [
-        path.join(gArv.cwd, NPM_CONFIG_FILE),
+        path.join(gArv.cwd!, NPM_CONFIG_FILE),
         path.join(homeDir, NPM_CONFIG_FILE)
     ];
 
@@ -500,6 +545,4 @@ async function getNpmConfig(): Promise<string> {
 let gArv: Argv;
 let gNpmRegistry: string;
 
-parseCommandLineParams();
-//console.log(gArv!);
 main().then();
