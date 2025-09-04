@@ -155,6 +155,10 @@ async function setDependencies(infos: Record<string, PackageInfos>, isReverting 
         let jsonText = await fs.readFile(pkg.filePath, "utf-8");
         let json = JSON.parse(jsonText);
 
+        if (json.jopiMono_MustIgnoreDependencies) {
+            return;
+        }
+
         patch("dependencies", json.dependencies);
         patch("devDependencies", json.devDependencies);
 
