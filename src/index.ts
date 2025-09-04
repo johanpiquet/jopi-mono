@@ -131,7 +131,7 @@ async function setDependencies(infos: Record<string, PackageInfos>, isReverting 
                         // Doing this will avoid updating the package.json if no dependency
                         // has a major / minor version update.
                         //
-                        if (currentVersion.startsWith("workspace:^")) {
+                        if (!gArv.forceExactVersions && currentVersion.startsWith("workspace:^")) {
                             let versionParts = pkgInfos.version.split(".");
                             let prefix = "workspace:^" + versionParts[0] + "." + versionParts[1] + ".";
 
@@ -424,6 +424,8 @@ interface Argv {
     publish: boolean;
     versions: boolean;
     fake: boolean;
+
+    forceExactVersions: boolean;
 }
 
 async function parseCommandLineParams() {
@@ -456,6 +458,12 @@ async function parseCommandLineParams() {
             type: 'boolean',
             default: false,
             description: 'Print the public version of all packages.',
+            demandOption: false, // Not required
+        })
+        .option("force-exact-versions", {
+            type: 'boolean',
+            default: false,
+            description: 'Allow forcing exact version matching in package.json.',
             demandOption: false, // Not required
         })
         .option("revert-public-version", {
