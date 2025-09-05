@@ -726,17 +726,18 @@ async function startUp() {
         .command("check", "List packages which have changes since last publication.", () => {}, async () => {
             await execCheckCommand();
         })
-        .command("publish", "Publish all the packages with have changes since last publication.", (yargs) => {
+        .command("publish [packages..]", "Publish all the packages with have changes since last publication.", (yargs) => {
             return yargs
+                .positional('packages', {
+                    type: 'string',
+                    array: true,
+                    describe: 'The packages to publish.',
+                    demandOption: false,
+                })
                 .option('no-incr', {
                     type: 'boolean',
                     default: false,
                     description: "Keep version as-is, without increasing revision number.",
-                })
-                .option('packages', {
-                    type: 'array',
-                    description: 'List of package to publish.',
-                    demandOption: false,
                 })
                 .option('fake', {
                     type: 'boolean',
@@ -785,7 +786,7 @@ async function startUp() {
         .command("ws-add <url>", "Clone a git repository into the workspace.", (yargs) => {
             return yargs
                 .positional('url', {
-                        describe: 'Git repository URL or repository name (uses git-account from package.json)',
+                    describe: 'Git repository URL or repository name (uses git-account from package.json)',
                     type: 'string',
                     demandOption: true
                 })

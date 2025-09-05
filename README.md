@@ -69,6 +69,11 @@ Publish all updated repo:
 bunx jopi-mono publish
 ```
 
+Publish only selected packages:
+```sh
+bunx jopi-mono publish jopi-mono my-second-package
+```
+
 Fake it, for test:
 ```sh
 bunx jopi-mono publish --fake
