@@ -723,10 +723,10 @@ async function execWsDetachCommand(params: { package: string }) {
 
 async function startUp() {
     yargs(hideBin(process.argv))
-        .command("check", "List packages which have changes since last publish.", () => {}, async () => {
+        .command("check", "List packages which have changes since last publication.", () => {}, async () => {
             await execCheckCommand();
         })
-        .command("publish", "Publish packages.", (yargs) => {
+        .command("publish", "Publish all the packages with have changes since last publication.", (yargs) => {
             return yargs
                 .option('no-incr', {
                     type: 'boolean',
@@ -751,7 +751,7 @@ async function startUp() {
             });
         })
 
-        .command("revert", "Revert package version to public version.",  (yargs) => {
+        .command("revert", "Revert package version number to the public version.",  (yargs) => {
             return yargs
                 .option('packages', {
                 type: 'array',

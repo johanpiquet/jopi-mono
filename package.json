@@ -1,5 +1,5 @@
 {
-  "version": "1.0.37",
+  "version": "2.0.0",
   "private": false,
   "name": "jopi-mono",
   "license": "MIT",
@@ -32,6 +32,7 @@
     "test-publish": "npx tsc; node ./dist/index.js publish --fake",
     "test-revert": "npx tsc; node ./dist/index.js revert --fake",
 
+    "test-help": "npx tsc; node ./dist/index.js --help",
     "test-versions": "npx tsc; node ./dist/index.js versions",
     "test-tool-restore": "npx tsc; node ./dist/index.js tool restore",
     "test-tool-hash": "npx tsc; node ./dist/index.js tool calchash",
