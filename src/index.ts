@@ -345,26 +345,17 @@ async function setDependencies(infos: Record<string, PackageInfos>, isReverting 
                         // Doing this will avoid updating the package.json if no dependency
                         // has a major / minor version update.
                         //
-                        if (currentVersion.startsWith("workspace:^")) {
-                            let versionParts = pkgInfos.version.split(".");
-                            let prefix = "workspace:^" + versionParts[0] + "." + versionParts[1] + ".";
-                            if (currentVersion.startsWith(prefix)) continue;
-                        }
+                        if (currentVersion===pkgInfos.version) continue;
                     }
 
                     let pkgVersion = isReverting ? pkgInfos.publicVersion : pkgInfos.version;
 
-                    changes.push(() => {
-                        if (pkgVersion) {
-                            // If 2.3.12 then get 2.1.0
-                            let parts = pkgVersion.split(".");
-                            parts[2] = "0";
-
-                            const version = parts.join(".");
-                            const newModif = modify(jsonText, [key, pkgName], "workspace:^" + version, {})
+                    if (pkgVersion) {
+                        changes.push(() => {
+                            const newModif = modify(jsonText, [key, pkgName], "workspace:^" + pkgVersion, {})
                             updated = updated ? updated.concat(newModif) : newModif;
-                        }
-                    });
+                        });
+                    }
                 }
             }
         }
@@ -374,9 +365,7 @@ async function setDependencies(infos: Record<string, PackageInfos>, isReverting 
         let jsonText = await fs.readFile(pkg.packageJsonFilePath, "utf-8");
         let json = JSON.parse(jsonText);
 
-        if (json.jopiMono_MustIgnoreDependencies) {
-            return;
-        }
+        if (json.jopiMono_MustIgnoreDependencies) return;
 
         patch("dependencies", json.dependencies);
         patch("devDependencies", json.devDependencies);
@@ -448,6 +437,16 @@ async function execToolRestoreBackup() {
 async function execToolCalcHash() {
     const pkgInfos = await findPackageJsonFiles();
     await loadPackageHashInfos(pkgInfos);
+}
+
+async function execToolSetDepVersion() {
+    const pkgInfos = await findPackageJsonFiles();
+
+    await backupAllPackageJson(pkgInfos);
+    console.log("✅  Backup create.");
+
+    await setDependencies(pkgInfos);
+    console.log("✅  Version updated.");
 }
 
 async function execPrintPackagesVersion() {
@@ -610,6 +609,28 @@ async function execRevertCommand(params: {
     }
 }
 
+async function execInstallCommand() {
+    try {
+        console.log("✅  Installing dependencies with bun...");
+        execSync("bun install", {stdio: 'inherit', cwd: gCwd});
+        console.log("✅  Dependencies installed successfully.");
+    } catch (error: any) {
+        console.error("❌  Failed to install dependencies:", error.message);
+        process.exit(1);
+    }
+}
+
+async function execUpdateCommand() {
+    try {
+        console.log("✅  Updating dependencies with bun...");
+        execSync("bun update", {stdio: 'inherit', cwd: gCwd});
+        console.log("✅  Dependencies updated successfully.");
+    } catch (error: any) {
+        console.error("❌  Failed to update dependencies:", error.message);
+        process.exit(1);
+    }
+}
+
 //endregion
 
 async function startUp() {
@@ -665,6 +686,14 @@ async function startUp() {
             await execPrintPackagesVersion();
         })
 
+        .command("install", "Install dependencies using bun install.", () => {}, async () => {
+            await execInstallCommand();
+        })
+
+        .command("update", "Update dependencies using bun update.", () => {}, async () => {
+            await execUpdateCommand();
+        })
+
         .command("tool", "Internal tools, for special cases.", (yargs) => {
             yargs.command("restore", "Restore package.json backups.",  () => {}, async () => {
                 await execToolRestoreBackup();
@@ -673,7 +702,12 @@ async function startUp() {
             yargs.command("calchash", "Cache the current packages hash.",  () => {}, async () => {
                 await execToolCalcHash();
             });
+
+            yargs.command("setdepversion", "Set correction versions for workspace dependencies.",  () => {}, async () => {
+                await execToolSetDepVersion();
+            });
         })
+
         .demandCommand(1, 'You must specify a valid command.')
         .version("2.0").strict().help().parse();
 }
