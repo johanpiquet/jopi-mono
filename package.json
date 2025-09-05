@@ -35,7 +35,9 @@
     "test-versions": "npx tsc; node ./dist/index.js versions",
     "test-tool-restore": "npx tsc; node ./dist/index.js tool restore",
     "test-tool-hash": "npx tsc; node ./dist/index.js tool calchash",
-    "test-check": "npx tsc; node ./dist/index.js check"
+    "test-check": "npx tsc; node ./dist/index.js check",
+    "test-update": "npx tsc; node ./dist/index.js update",
+    "test-tool-setdepversion": "npx tsc; node ./dist/index.js tool setdepversion"
   },
   "devDependencies": {
     "@types/bun": "latest",
@@ -49,7 +51,7 @@
     "mime-types": "^3.0.1",
     "ws": "^8.18.3",
     "yargs": "^18.0.0",
-    "jopi-node-space": "workspace:^0.0.17"
+    "jopi-node-space": "workspace:^0.0.20"
   },
   "bin": {
     "jopi-mono": "bin/jopi-mono.js"
