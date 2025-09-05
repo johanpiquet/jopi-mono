@@ -37,7 +37,10 @@
     "test-tool-hash": "npx tsc; node ./dist/index.js tool calchash",
     "test-check": "npx tsc; node ./dist/index.js check",
     "test-update": "npx tsc; node ./dist/index.js update",
-    "test-tool-setdepversion": "npx tsc; node ./dist/index.js tool setdepversion"
+    "test-tool-setdepversion": "npx tsc; node ./dist/index.js tool setdepversion",
+
+    "test-ws-add": "npx tsc; node ./dist/index.js ws-add jopi-loader",
+    "test-ws-detach": "npx tsc; node ./dist/index.js ws-detach jopi-loader"
   },
   "devDependencies": {
     "@types/bun": "latest",

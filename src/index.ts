@@ -329,61 +329,70 @@ async function loadPackageHashInfos(pkgInfos: Record<string, PackageInfos>) {
 
 //region Actions
 
-async function setDependencies(infos: Record<string, PackageInfos>, isReverting = false) {
-    async function patchPackage(pkg: PackageInfos, infos: Record<string, PackageInfos>) {
-        function patch(key: string, dependencies: Record<string, string>) {
-            if (!dependencies) return;
+async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, PackageInfos>, mode: undefined|"reverting"|"detach") {
+    function patch(key: string, dependencies: Record<string, string>) {
+        if (!dependencies) return;
 
-            for (let pkgName in dependencies) {
-                let pkgInfos = infos[pkgName];
+        for (let pkgName in dependencies) {
+            let pkgInfos = infos[pkgName];
 
-                if (pkgInfos) {
-                    if (!isReverting) {
-                        let currentVersion = dependencies[pkgName];
+            if (pkgInfos) {
+                if (!isReverting) {
+                    let currentVersion = dependencies[pkgName];
 
-                        // Avoid updating the file if only the minor version has changed.
-                        // Doing this will avoid updating the package.json if no dependency
-                        // has a major / minor version update.
-                        //
-                        if (currentVersion===pkgInfos.version) continue;
-                    }
-
-                    let pkgVersion = isReverting ? pkgInfos.publicVersion : pkgInfos.version;
-
-                    if (pkgVersion) {
-                        changes.push(() => {
-                            const newModif = modify(jsonText, [key, pkgName], "workspace:^" + pkgVersion, {})
-                            updated = updated ? updated.concat(newModif) : newModif;
-                        });
-                    }
+                    // Avoid updating the file if only the minor version has changed.
+                    // Doing this will avoid updating the package.json if no dependency
+                    // has a major / minor version update.
+                    //
+                    if (currentVersion===pkgInfos.version) continue;
                 }
-            }
-        }
 
-        const changes: (()=>void)[] = [];
+                let pkgVersion = isReverting ? pkgInfos.publicVersion : pkgInfos.version;
 
-        let jsonText = await fs.readFile(pkg.packageJsonFilePath, "utf-8");
-        let json = JSON.parse(jsonText);
+                if (pkgVersion) {
+                    changes.push(() => {
+                        let newValue =  "workspace:^" + pkgVersion;
 
-        if (json.jopiMono_MustIgnoreDependencies) return;
+                        if (isDetaching) {
+                            newValue = "^" + pkgVersion;
+                        }
 
-        patch("dependencies", json.dependencies);
-        patch("devDependencies", json.devDependencies);
-
-        let updated: EditResult | undefined;
-
-        if (changes.length) {
-            changes.forEach(c => c());
-
-            if (updated) {
-                let output = applyEdits(jsonText, updated);
-                await fs.writeFile(pkg.packageJsonFilePath, output);
+                        const newModif = modify(jsonText, [key, pkgName], newValue, {})
+                        updated = updated ? updated.concat(newModif) : newModif;
+                    });
+                }
             }
         }
     }
 
+    const isReverting = mode === "reverting";
+    const isDetaching = mode === "detach";
+
+    const changes: (()=>void)[] = [];
+
+    let jsonText = await fs.readFile(pkg.packageJsonFilePath, "utf-8");
+    let json = JSON.parse(jsonText);
+
+    if (json.jopiMono_MustIgnoreDependencies) return;
+
+    patch("dependencies", json.dependencies);
+    patch("devDependencies", json.devDependencies);
+
+    let updated: EditResult | undefined;
+
+    if (changes.length) {
+        changes.forEach(c => c());
+
+        if (updated) {
+            let output = applyEdits(jsonText, updated);
+            await fs.writeFile(pkg.packageJsonFilePath, output);
+        }
+    }
+}
+
+async function setDependencies(infos: Record<string, PackageInfos>, isReverting = false) {
     for (let key in infos) {
-        await patchPackage(infos[key], infos);
+        await setDependenciesFor(infos[key], infos, isReverting ? "reverting" : undefined);
     }
 }
 
@@ -443,10 +452,10 @@ async function execToolSetDepVersion() {
     const pkgInfos = await findPackageJsonFiles();
 
     await backupAllPackageJson(pkgInfos);
-    console.log("✅  Backup create.");
+    console.log("✅  Backup created.");
 
     await setDependencies(pkgInfos);
-    console.log("✅  Version updated.");
+    console.log("✅  Versions updated.");
 }
 
 async function execPrintPackagesVersion() {
@@ -631,6 +640,85 @@ async function execUpdateCommand() {
     }
 }
 
+async function execWsAddCommand(params: {
+    url: string,
+    dir?: string
+}) {
+    async function getGitAccount(): Promise<string | undefined> {
+        try {
+            const packageJsonPath = path.join(gCwd, 'package.json');
+            const content = await fs.readFile(packageJsonPath, 'utf8');
+            const packageJson = JSON.parse(content);
+            return packageJson["git-account"];
+        } catch {
+            return undefined;
+        }
+    }
+
+    try {
+        let repoUrl = params.url;
+        let repoName: string;
+
+        if (params.url.startsWith('http://') || params.url.startsWith('https://') || params.url.startsWith('git@')) {
+            const urlParts = params.url.split('/');
+            repoName = urlParts[urlParts.length - 1];
+
+            if (repoName.endsWith('.git')) {
+                repoName = repoName.slice(0, -4);
+            }
+        } else {
+            repoName = params.url;
+            const gitAccount = await getGitAccount();
+
+            if (!gitAccount) {
+                console.error("❌ No 'git-account' found in package.json. Please provide a full URL or add 'git-account' to your package.json.");
+                process.exit(1);
+            }
+
+            repoUrl = `${gitAccount}/${repoName}`;
+        }
+
+        let targetDir = params.dir;
+        if (!targetDir) targetDir = `packages/${repoName}`;
+
+        console.log(`Cloning repository ${repoUrl} into ${targetDir}...`);
+        
+        try {
+            execSync(`git clone ${repoUrl} ${targetDir}`, {stdio: 'pipe', cwd: gCwd});
+            console.log(`✅  Repository cloned successfully into ${targetDir}.`);
+        } catch (error: any) {
+            // Afficher l'output seulement en cas d'erreur
+            if (error.stdout) {
+                console.log(error.stdout.toString());
+            }
+            if (error.stderr) {
+                console.error(error.stderr.toString());
+            }
+            console.error("❌  Failed to clone repository:", error.message);
+        process.exit(1);
+        }
+
+    } catch (error: any) {
+        console.error("❌  Failed to clone repository:", error.message);
+        process.exit(1);
+    }
+
+    await execToolSetDepVersion();
+}
+
+async function execWsDetachCommand(params: { package: string }) {
+    const pkgInfos = await findPackageJsonFiles();
+    let pkg = pkgInfos[params.package];
+
+    if (!pkg) {
+        console.error(`❌  Project ${params.package} not found.`);
+        process.exit(1);
+    }
+
+    await setDependenciesFor(pkg, pkgInfos, "detach");
+    console.log(`✅  Project ${params.package} has been detached.`);
+}
+
 //endregion
 
 async function startUp() {
@@ -692,6 +780,38 @@ async function startUp() {
 
         .command("update", "Update dependencies using bun update.", () => {}, async () => {
             await execUpdateCommand();
+        })
+
+        .command("ws-add <url>", "Clone a git repository into the workspace.", (yargs) => {
+            return yargs
+                .positional('url', {
+                        describe: 'Git repository URL or repository name (uses git-account from package.json)',
+                    type: 'string',
+                    demandOption: true
+                })
+                .option('dir', {
+                    type: 'string',
+                    description: 'Target directory name',
+                    demandOption: false
+                });
+        }, async (argv) => {
+            await execWsAddCommand({
+                url: argv.url as string,
+                dir: argv.dir as string | undefined
+            });
+        })
+
+        .command("ws-detach <package>", "Detach a project, removing dependencies of type workspace.", (yargs) => {
+            return yargs
+                .positional('package', {
+                    describe: 'The name of the package to detach',
+                    type: 'string',
+                    demandOption: true
+                });
+        }, async (argv) => {
+            await execWsDetachCommand({
+                package: argv.package as string
+            });
         })
 
         .command("tool", "Internal tools, for special cases.", (yargs) => {
