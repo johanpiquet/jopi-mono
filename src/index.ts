@@ -495,6 +495,8 @@ async function execPublishCommand(params: {
     fake: boolean,
     dontIncr: boolean
 }) {
+    await checkNpmAuth();
+
     const pkgInfos = await findPackageJsonFiles();
     await loadPackageHashInfos(pkgInfos);
 
@@ -721,11 +723,28 @@ async function execWsDetachCommand(params: { package: string }) {
 
 //endregion
 
+/**
+ * Check if the user is authenticated with npm registry
+ */
+async function checkNpmAuth(): Promise<void> {
+    try {
+        const _result = execSync('npm whoami', { stdio: 'pipe', cwd: gCwd });
+        //console.log(`✅  Authenticated as: ${_result.toString().trim()}`);
+        return;
+    } catch {
+    }
+
+    console.error("❌  You are not authenticated with npm registry.");
+    console.error("Please run 'npm login' to authenticate before using this tool.");
+    process.exit(1);
+}
+
 async function startUp() {
     yargs(hideBin(process.argv))
         .command("check", "List packages which have changes since last publication.", () => {}, async () => {
             await execCheckCommand();
         })
+
         .command("publish [packages..]", "Publish all the packages with have changes since last publication.", (yargs) => {
             return yargs
                 .positional('packages', {
