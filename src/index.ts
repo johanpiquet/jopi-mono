@@ -329,7 +329,7 @@ async function loadPackageHashInfos(pkgInfos: Record<string, PackageInfos>) {
 
 //region Actions
 
-async function setDependencies(infos: Record<string, PackageInfos>, isReverting = false, forceExactVersions = false) {
+async function setDependencies(infos: Record<string, PackageInfos>, isReverting = false) {
     async function patchPackage(pkg: PackageInfos, infos: Record<string, PackageInfos>) {
         function patch(key: string, dependencies: Record<string, string>) {
             if (!dependencies) return;
@@ -345,20 +345,25 @@ async function setDependencies(infos: Record<string, PackageInfos>, isReverting 
                         // Doing this will avoid updating the package.json if no dependency
                         // has a major / minor version update.
                         //
-                        if (!forceExactVersions && currentVersion.startsWith("workspace:^")) {
+                        if (currentVersion.startsWith("workspace:^")) {
                             let versionParts = pkgInfos.version.split(".");
                             let prefix = "workspace:^" + versionParts[0] + "." + versionParts[1] + ".";
-
-                            if (currentVersion.startsWith(prefix)) {
-                                continue;
-                            }
+                            if (currentVersion.startsWith(prefix)) continue;
                         }
                     }
 
+                    let pkgVersion = isReverting ? pkgInfos.publicVersion : pkgInfos.version;
+
                     changes.push(() => {
-                        let version = isReverting ? pkgInfos.publicVersion : pkgInfos.version;
-                        let newModif = modify(jsonText, [key, pkgName], "workspace:^" + version, {})
-                        updated = updated ? updated.concat(newModif) : newModif;
+                        if (pkgVersion) {
+                            // If 2.3.12 then get 2.1.0
+                            let parts = pkgVersion.split(".");
+                            parts[2] = "0";
+
+                            const version = parts.join(".");
+                            const newModif = modify(jsonText, [key, pkgName], "workspace:^" + version, {})
+                            updated = updated ? updated.concat(newModif) : newModif;
+                        }
                     });
                 }
             }
