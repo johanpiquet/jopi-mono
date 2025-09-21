@@ -259,6 +259,10 @@ async function findPackageJsonFiles(): Promise<Record<string, PackageInfos>> {
     async function searchInDirectories(dir: string, result: Record<string, PackageInfos>) {
         const files = await fs.readdir(dir);
 
+        if (files.includes(".jopiMonoIgnore")) {
+            return result;
+        }
+
         for (const file of files) {
             const fullPath = path.join(dir, file);
             const stat = await fs.stat(fullPath);
@@ -373,7 +377,9 @@ async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, Packa
     let jsonText = await fs.readFile(pkg.packageJsonFilePath, "utf-8");
     let json = JSON.parse(jsonText);
 
-    if (json.jopiMono_MustIgnoreDependencies) return;
+    if (json.jopiMono_MustIgnoreDependencies) {
+        return;
+    }
 
     patch("dependencies", json.dependencies);
     patch("devDependencies", json.devDependencies);

@@ -84,6 +84,18 @@ List the versions of all your packages (show the public and the local version nu
 bunx jopi-mono version
 ```
 
+## 📝 Special options
+
+### File .jopiMonoIgnore
+
+The file `.jopiMonoIgnore` allows ignoring a project inside the current directory and his subdirectory. 
+
+### Option jopiMono_MustIgnoreDependencies
+
+In the `package.json` file, the option `jopiMono_MustIgnoreDependencies` allows ignoring changing the versions for the dependencies.
+
+Without that the versions of the projects inside the workspace are upgraded when publishing a package to match current workspace version.  
+
 ## 📚 License
 
 This project is licensed under the MIT License.
