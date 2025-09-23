@@ -97,20 +97,20 @@ async function backupAllPackageJson(pkgInfos: Record<string, PackageInfos>) {
     }));
 }
 
-async function restoreAllPackageJson(pkgInfos: Record<string, PackageInfos>) {
-    async function restore(pkg: PackageInfos) {
-        let targetFile = getCacheFilePath(pkg.name + ".json", {subDir: ["backup"]});
+async function restoreThisPackage(pkg: PackageInfos) {
+    let targetFile = getCacheFilePath(pkg.name + ".json", {subDir: ["backup"]});
 
-        if (await NodeSpace.fs.isFile(targetFile)) {
-            let content = await NodeSpace.fs.readTextFromFile(targetFile);
-            await NodeSpace.fs.writeTextToFile(pkg.packageJsonFilePath, content, true);
-        } else {
-            console.log("No backup file found for", pkg.name, "can't restore");
-        }
+    if (await NodeSpace.fs.isFile(targetFile)) {
+        let content = await NodeSpace.fs.readTextFromFile(targetFile);
+        await NodeSpace.fs.writeTextToFile(pkg.packageJsonFilePath, content, true);
+    } else {
+        console.log("No backup file found for", pkg.name, "can't restore");
     }
+}
 
+async function restoreAllPackageJson(pkgInfos: Record<string, PackageInfos>) {
     await Promise.all(Object.values(pkgInfos).map(async pkg => {
-        await restore(pkg);
+        await restoreThisPackage(pkg);
     }));
 }
 
@@ -451,12 +451,16 @@ async function incrementVersions(packages: string[], pkgInfos: Record<string, Pa
     }
 }
 
-async function setUpdateDateAndPublicVersion(pkg: PackageInfos) {
-    const theDate = new Date().toISOString();
+async function setUpdateDateAndPublicVersion(pkg: PackageInfos, isUsingPublicRegistry: boolean) {
+    const theDate = new Date().toLocaleDateString();
 
     let jsonText = await fs.readFile(pkg.packageJsonFilePath, "utf-8");
     let updated = modify(jsonText, ["publicVersion"], pkg.publicVersion, {});
     updated = updated.concat(modify(jsonText, ["publishedDate"], theDate, {}));
+
+    if (isUsingPublicRegistry) {
+        updated = updated.concat(modify(jsonText, ["publicPublishedDate"], theDate, {}));
+    }
 
     let output = applyEdits(jsonText, updated);
 
@@ -547,6 +551,11 @@ async function execPublishCommand(params: {
             console.log(`❌   Package ${key} not found.`);
             process.exit(1);
         }
+
+        if (!pkg.isValidForPublish) {
+            console.log(`❌   Package ${key} is not publishable.`);
+            process.exit(1);
+        }
     }
 
     if (!packagesToPublish.length) {
@@ -564,21 +573,26 @@ async function execPublishCommand(params: {
         await incrementVersions(packagesToPublish, pkgInfos);
     }
 
+    let isUsingPublicRegistry = gNpmRegistry === DEFAULT_NPM_REGISTRY;
+
     for (let pkgName of packagesToPublish) {
         let pkg = pkgInfos[pkgName];
+
         console.log("✅  Update dependencies.");
         await setDependenciesFor(pkg, pkgInfos);
 
         console.log("✅  Set publish date.");
-        await setUpdateDateAndPublicVersion(pkg);
+        await setUpdateDateAndPublicVersion(pkg, isUsingPublicRegistry);
     }
 
-    for (let key in packagesToPublish) {
+    let currentPackage: PackageInfos|undefined;
+
+    for (let key of packagesToPublish) {
         let pkg = pkgInfos[key];
         if (!pkg || !pkg.isValidForPublish) continue;
+        currentPackage = pkg;
 
         const pkgRootDir = path.resolve(path.dirname(pkg.packageJsonFilePath));
-        let isUsingPublicRegistry = gNpmRegistry === DEFAULT_NPM_REGISTRY;
 
         try {
             if (!params.fake) {
@@ -599,6 +613,11 @@ async function execPublishCommand(params: {
             } else {
                 console.log((`❌  ${pkg.name}`).padEnd(30) + ` -> error. Version ${pkg.version}`);
                 console.log("     |- Error:", error.message);
+            }
+
+            if (currentPackage) {
+                console.log("⚠️  Restoring package " + currentPackage.name + "...");
+                await restoreThisPackage(currentPackage);
             }
         }
 
