@@ -308,8 +308,6 @@ async function getPackageCheckSum(pkg: PackageInfos): Promise<string|undefined> 
     return undefined;
 }
 
-const cacheFileName = "packages-hash.json";
-
 async function deletePackageHashInfos() {
     await deleteCacheFile(cacheFileName);
 }
@@ -340,11 +338,13 @@ async function loadPackageHashInfos(pkgInfos: Record<string, PackageInfos>) {
     }
 }
 
+const cacheFileName = "packages-hash.json";
+
 //endregion
 
 //region Actions
 
-async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, PackageInfos>, mode: undefined|"reverting"|"detach") {
+async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, PackageInfos>, mode?: undefined|"reverting"|"detach") {
     function patch(key: string, dependencies: Record<string, string>) {
         if (!dependencies) return;
 
@@ -451,6 +451,18 @@ async function incrementVersions(packages: string[], pkgInfos: Record<string, Pa
     }
 }
 
+async function setUpdateDateAndPublicVersion(pkg: PackageInfos) {
+    const theDate = new Date().toISOString();
+
+    let jsonText = await fs.readFile(pkg.packageJsonFilePath, "utf-8");
+    let updated = modify(jsonText, ["publicVersion"], pkg.publicVersion, {});
+    updated = updated.concat(modify(jsonText, ["publishedDate"], theDate, {}));
+
+    let output = applyEdits(jsonText, updated);
+
+    await fs.writeFile(pkg.packageJsonFilePath, output);
+}
+
 //endregion
 
 //region Commands
@@ -528,6 +540,15 @@ async function execPublishCommand(params: {
         }
     });
 
+    for (let key of packagesToPublish) {
+        let pkg = pkgInfos[key];
+
+        if (!pkg) {
+            console.log(`❌   Package ${key} not found.`);
+            process.exit(1);
+        }
+    }
+
     if (!packagesToPublish.length) {
         console.log("Nothing to publish");
         return;
@@ -541,13 +562,20 @@ async function execPublishCommand(params: {
     if (!params.noIncr) {
         console.log("✅  Increase revision numbers.");
         await incrementVersions(packagesToPublish, pkgInfos);
-        await setDependencies(pkgInfos);
     }
 
-    for (let key in pkgInfos) {
+    for (let pkgName of packagesToPublish) {
+        let pkg = pkgInfos[pkgName];
+        console.log("✅  Update dependencies.");
+        await setDependenciesFor(pkg, pkgInfos);
+
+        console.log("✅  Set publish date.");
+        await setUpdateDateAndPublicVersion(pkg);
+    }
+
+    for (let key in packagesToPublish) {
         let pkg = pkgInfos[key];
-        if (!pkg.isValidForPublish) continue;
-        if (!packagesToPublish.includes(pkg.name)) continue;
+        if (!pkg || !pkg.isValidForPublish) continue;
 
         const pkgRootDir = path.resolve(path.dirname(pkg.packageJsonFilePath));
         let isUsingPublicRegistry = gNpmRegistry === DEFAULT_NPM_REGISTRY;
