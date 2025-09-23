@@ -55,6 +55,12 @@ async function getCacheFile_json<T>(fileName: string, options?: CacheFileOptions
     }
 }
 
+async function deleteCacheFile(fileName: string): Promise<void> {
+    let filePath = getCacheFilePath(fileName);
+    try { await NodeSpace.fs.unlink(filePath); }
+    catch {}
+}
+
 function saveCacheFile_json(fileName: string, content: any, options?: CacheFileOptions): Promise<void> {
     return saveCacheFile(fileName, JSON.stringify(content, null, 2), options);
 }
@@ -302,8 +308,13 @@ async function getPackageCheckSum(pkg: PackageInfos): Promise<string|undefined> 
     return undefined;
 }
 
+const cacheFileName = "packages-hash.json";
+
+async function deletePackageHashInfos() {
+    await deleteCacheFile(cacheFileName);
+}
+
 async function loadPackageHashInfos(pkgInfos: Record<string, PackageInfos>) {
-    const cacheFileName = "packages-hash.json";
     let cache = await getCacheFile_json<any>(cacheFileName);
 
     if (cache) {
@@ -450,6 +461,8 @@ async function execToolRestoreBackup() {
 }
 
 async function execToolCalcHash() {
+    await deletePackageHashInfos();
+
     const pkgInfos = await findPackageJsonFiles();
     await loadPackageHashInfos(pkgInfos);
 }
