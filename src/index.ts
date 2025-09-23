@@ -295,7 +295,7 @@ async function getPackageCheckSum(pkg: PackageInfos): Promise<string|undefined> 
     const cwd = path.dirname(pkg.packageJsonFilePath);
 
     try {
-        const output = execSync('npm pack --dry-run --json', {stdio: 'pipe', cwd}).toString();
+        const output = execSync(COMMAND_DRY_RUN, {stdio: 'pipe', cwd}).toString();
         const packInfo = JSON.parse(output);
 
         if (packInfo && packInfo.length > 0) {
@@ -366,7 +366,7 @@ async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, Packa
 
                 if (pkgVersion) {
                     changes.push(() => {
-                        let newValue =  "workspace:^" + pkgVersion;
+                        let newValue =  "workspace:^";
 
                         if (isDetaching) {
                             newValue = "^" + pkgVersion;
@@ -670,14 +670,16 @@ async function execRevertCommand(params: {
         }
     }
 
-    // Clean bun.js local cache.
+    // Clean bun local cache.
     //
     if (hasChanges) {
         try {
-            console.log("✅ Clearing bun.js cache.")
-            execSync("bun pm cache rm");
+            console.log("✅ Clearing bun cache.")
+            execSync(COMMAND_CLEAN_CACHE__BUN);
+            console.log("✅ Clearing node cache.")
+            execSync(COMMAND_CLEAN_CACHE__NODE);
         } catch (e) {
-            console.error("Can't clean bun.js local cache", e);
+            console.error("Can't clean bun local cache", e);
         }
     }
 
@@ -689,7 +691,7 @@ async function execRevertCommand(params: {
 async function execInstallCommand() {
     try {
         console.log("✅  Installing dependencies with bun...");
-        execSync("bun install", {stdio: 'inherit', cwd: gCwd});
+        execSync(COMMAND_INSTALL, {stdio: 'inherit', cwd: gCwd});
         console.log("✅  Dependencies installed successfully.");
     } catch (error: any) {
         console.error("❌  Failed to install dependencies:", error.message);
@@ -700,7 +702,7 @@ async function execInstallCommand() {
 async function execUpdateCommand() {
     try {
         console.log("✅  Updating dependencies with bun...");
-        execSync("bun update", {stdio: 'inherit', cwd: gCwd});
+        execSync(COMMAND_UPDATE, {stdio: 'inherit', cwd: gCwd});
         console.log("✅  Dependencies updated successfully.");
     } catch (error: any) {
         console.error("❌  Failed to update dependencies:", error.message);
@@ -794,14 +796,14 @@ async function execWsDetachCommand(params: { package: string }) {
  */
 async function checkNpmAuth(): Promise<void> {
     try {
-        const _result = execSync('npm whoami', { stdio: 'pipe', cwd: gCwd });
+        const _result = execSync(COMMAND_WHOIAM, { stdio: 'pipe', cwd: gCwd });
         console.log(`✅  Authenticated as: ${_result.toString().trim()}`);
         return;
     } catch {
     }
 
     console.error("❌  You are not authenticated with npm registry.");
-    console.error("Please run 'npm login' to authenticate before using this tool.");
+    console.error("Please run 'bun npm login' to authenticate before using this tool.");
     process.exit(1);
 }
 
@@ -919,8 +921,15 @@ async function startUp() {
 }
 
 const NPM_CONFIG_FILE = ".npmrc";
-const PUBLISH_COMMAND = "bun publish --access public";
 const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
+
+const PUBLISH_COMMAND = "npm publish --access public";
+const COMMAND_CLEAN_CACHE__BUN = "bun pm cache rm";
+const COMMAND_CLEAN_CACHE__NODE = "npm cache clean --force";
+const COMMAND_INSTALL = "bun install";
+const COMMAND_UPDATE = "bun update";
+const COMMAND_WHOIAM = "npm whoami";
+const COMMAND_DRY_RUN = "npm publish --dry-run --json";
 
 const gCwd = await searchWorkspaceDir();
 const gNpmRegistry = await getNpmConfig(gCwd);
