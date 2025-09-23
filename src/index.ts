@@ -512,7 +512,7 @@ async function execCheckCommand() {
 async function execPublishCommand(params: {
     packages: string[]|undefined,
     fake: boolean,
-    dontIncr: boolean
+    noIncr: boolean
 }) {
     await checkNpmAuth();
 
@@ -521,7 +521,7 @@ async function execPublishCommand(params: {
 
     let isFirst = false;
 
-    const packagesToPublish = params.packages || await detectUpdatedPackages(pkgInfos, {
+    const packagesToPublish = params.packages?.length ? params.packages : await detectUpdatedPackages(pkgInfos, {
         onPackageChecked: (_, pkg) => {
             if (isFirst) console.log();
             NodeSpace.term.consoleLogTemp(true, "Checking changes: " + pkg.name);
@@ -538,7 +538,7 @@ async function execPublishCommand(params: {
         await backupAllPackageJson(pkgInfos);
     }
 
-    if (!params.dontIncr) {
+    if (!params.noIncr) {
         console.log("✅  Increase revision numbers.");
         await incrementVersions(packagesToPublish, pkgInfos);
         await setDependencies(pkgInfos);
@@ -748,7 +748,7 @@ async function execWsDetachCommand(params: { package: string }) {
 async function checkNpmAuth(): Promise<void> {
     try {
         const _result = execSync('npm whoami', { stdio: 'pipe', cwd: gCwd });
-        //console.log(`✅  Authenticated as: ${_result.toString().trim()}`);
+        console.log(`✅  Authenticated as: ${_result.toString().trim()}`);
         return;
     } catch {
     }
@@ -772,7 +772,7 @@ async function startUp() {
                     describe: 'The packages to publish.',
                     demandOption: false,
                 })
-                .option('no-incr', {
+                .option('noincr', {
                     type: 'boolean',
                     default: false,
                     description: "Keep version as-is, without increasing revision number.",
@@ -786,7 +786,7 @@ async function startUp() {
             await execPublishCommand({
                 packages: argv.packages as string[]|undefined,
                 fake: argv.fake,
-                dontIncr: argv.noIncr
+                noIncr: argv.noincr
             });
         })
 

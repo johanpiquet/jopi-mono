@@ -30,6 +30,7 @@
     "install-jopimono": "rm ~/.bun/bin/jopimono; ln -s /Users/johan/Projets/jopi-rewrite-workspace/_others/jopi-mono/bin/jopi-mono.js ~/.bun/bin/jopi-mono",
 
     "test-publish": "npx tsc; node ./dist/index.js publish --fake",
+    "test-publish-no-incr": "npx tsc; node ./dist/index.js publish --fake --noincr",
     "test-publish-this": "npx tsc; node ./dist/index.js publish jopi-mono jopi-rewrite --fake",
     "test-revert": "npx tsc; node ./dist/index.js revert --fake",
 
