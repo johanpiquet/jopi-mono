@@ -544,8 +544,20 @@ async function execCheckCommand() {
 async function execPublishCommand(params: {
     packages: string[]|undefined,
     fake: boolean,
-    noIncr: boolean
+    noIncr: boolean,
+    yes: boolean
 }) {
+    const isUsingPublicRegistry = gNpmRegistry === DEFAULT_NPM_REGISTRY;
+
+    if (!params.yes && isUsingPublicRegistry) {
+        const response = await NodeSpace.term.askYesNo("⚠️  It's will use the official npm repository. Do you want to continue?", true);
+
+        if (!response) {
+            console.log("❌  Canceled");
+            process.exit(0);
+        }
+    }
+
     await checkNpmAuth();
 
     const pkgInfos = await findPackageJsonFiles();
@@ -588,8 +600,6 @@ async function execPublishCommand(params: {
         console.log("✅  Increase revision numbers.");
         await incrementVersions(packagesToPublish, pkgInfos);
     }
-
-    let isUsingPublicRegistry = gNpmRegistry === DEFAULT_NPM_REGISTRY;
 
     for (let pkgName of packagesToPublish) {
         let pkg = pkgInfos[pkgName];
@@ -645,7 +655,10 @@ async function execPublishCommand(params: {
     if (params.fake) {
         console.log("⚠️⚠️⚠️  Fake: restore  ⚠️⚠️⚠️");
         await restoreAllPackageJson(pkgInfos);
+        console.log("✅  Restored");
     }
+
+    process.exit(0);
 }
 
 async function execRevertCommand(params: {
@@ -846,12 +859,18 @@ async function startUp() {
                     type: 'boolean',
                     default: false,
                     description: "Don't really publish and revert all changes.",
+                })
+                .option('yes', {
+                    type: 'boolean',
+                    default: false,
+                    description: "Confirm automatically the publication.",
                 });
         }, async (argv) => {
             await execPublishCommand({
                 packages: argv.packages as string[]|undefined,
                 fake: argv.fake,
-                noIncr: argv.noincr
+                noIncr: argv.noincr,
+                yes: argv.yes
             });
         })
 
