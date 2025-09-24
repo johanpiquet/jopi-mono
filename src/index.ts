@@ -186,7 +186,7 @@ async function detectUpdatedPackages(pkgInfos: Record<string, PackageInfos>, opt
         const pkg = pkgInfos[key];
         if (!pkg.isValidForPublish) continue;
 
-        let newHash = await getPackageCheckSum(pkg);
+        let newHash = await getPackage_latestModificationDate(pkg);
 
         let hasChanges = !!(newHash && (pkg.packageHash !== newHash));
         if (hasChanges) updatedPackages.push(pkg.name);
@@ -289,23 +289,39 @@ async function findPackageJsonFiles(): Promise<Record<string, PackageInfos>> {
     return await searchInDirectories(gCwd, {});
 }
 
-async function getPackageCheckSum(pkg: PackageInfos): Promise<string|undefined> {
-    if (!pkg.isValidForPublish) return undefined;
+async function getPackage_latestModificationDate(pkg: PackageInfos): Promise<string|undefined> {
+    async function scanDirectories(dir: string): Promise<void> {
+        const entries = await fs.readdir(dir, { withFileTypes: true });
 
-    const cwd = path.dirname(pkg.packageJsonFilePath);
+        for (const entry of entries) {
+            const fullPath = path.join(dir, entry.name);
 
-    try {
-        const output = execSync(COMMAND_DRY_RUN, {stdio: 'pipe', cwd}).toString();
-        const packInfo = JSON.parse(output);
+            if (entry.isDirectory()) {
+                if (entry.name[0]==='.') continue;
 
-        if (packInfo && packInfo.length > 0) {
-            return packInfo[0].integrity;
+                if (!excludeDirs.includes(entry.name)) {
+                    dirCount++
+                    await scanDirectories(fullPath);
+                }
+            } else {
+                fileCount++;
+
+                const stats = await fs.stat(fullPath);
+                const mtimeMs = stats.mtimeMs;
+                if (maxTime < mtimeMs) maxTime = mtimeMs;
+            }
         }
-    } catch(e) {
-        console.error(`❌  Failed to get package checksum for ${pkg.name}`, e);
     }
 
-    return undefined;
+    let maxTime = 0;
+    let fileCount = 0;
+    let dirCount = 0;
+
+    let dirPath = path.dirname(pkg.packageJsonFilePath);
+    let excludeDirs = ["dist", "build", "temp", "temps", "out"];
+
+    await scanDirectories(dirPath);
+    return maxTime.toString() + '-' + fileCount.toString() + '-' + dirCount.toString();
 }
 
 async function deletePackageHashInfos() {
@@ -330,7 +346,7 @@ async function loadPackageHashInfos(pkgInfos: Record<string, PackageInfos>) {
             if (!pkg.isValidForPublish) continue;
 
             NodeSpace.term.consoleLogTemp(true, `Calculating hash for ${pkg.name}`);
-            pkg.packageHash = await getPackageCheckSum(pkg);
+            pkg.packageHash = await getPackage_latestModificationDate(pkg);
             cache[pkg.name] = pkg.packageHash;
         }
 
@@ -621,7 +637,7 @@ async function execPublishCommand(params: {
             }
         }
 
-        pkg.packageHash = await getPackageCheckSum(pkg);
+        pkg.packageHash = await getPackage_latestModificationDate(pkg);
 
         await NodeSpace.timer.tick(100);
     }
