@@ -601,22 +601,18 @@ async function execPublishCommand(params: {
         await incrementVersions(packagesToPublish, pkgInfos);
     }
 
-    for (let pkgName of packagesToPublish) {
-        let pkg = pkgInfos[pkgName];
-
-        console.log("✅  Update dependencies.");
-        await setDependenciesFor(pkg, pkgInfos);
-
-        console.log("✅  Set publish date.");
-        await setUpdateDateAndPublicVersion(pkg, isUsingPublicRegistry);
-    }
-
     let currentPackage: PackageInfos|undefined;
 
     for (let key of packagesToPublish) {
         let pkg = pkgInfos[key];
         if (!pkg || !pkg.isValidForPublish) continue;
         currentPackage = pkg;
+
+        console.log("✅  Update dependencies to neutral version.");
+        await setDependenciesFor(pkg, pkgInfos, "detach");
+
+        console.log("✅  Set publish date.");
+        await setUpdateDateAndPublicVersion(pkg, isUsingPublicRegistry);
 
         const pkgRootDir = path.resolve(path.dirname(pkg.packageJsonFilePath));
 
@@ -633,6 +629,9 @@ async function execPublishCommand(params: {
             }
 
             if (isUsingPublicRegistry) pkg.publicVersion = pkg.version;
+
+            console.log("✅  Restore dependencies to workspace version.");
+            await setDependenciesFor(pkg, pkgInfos);
         } catch (error: any) {
             if (error.message.includes("409")) {
                 console.log((`❌  ${pkg.name}`).padEnd(30) + ` -> conflict. Public version is already ${pkg.publicVersion}`);
