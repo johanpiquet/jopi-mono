@@ -56,11 +56,12 @@
     "mime-types": "^3.0.1",
     "ws": "^8.18.3",
     "yargs": "^18.0.0",
-    "jopi-node-space": "latest"
+    "jopi-node-space": "workspace:^"
   },
   "bin": {
     "jopi-mono": "bin/jopi-mono.js"
   },
 
-  "jopiMono_MustIgnoreDependencies": true,"publishedDate": "9/25/2025","publicPublishedDate": "9/25/2025"
+  "publishedDate": "9/25/2025",
+  "publicPublishedDate": "9/25/2025"
 }

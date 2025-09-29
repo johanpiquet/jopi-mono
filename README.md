@@ -94,7 +94,19 @@ The file `.jopiMonoIgnore` allows ignoring a project inside the current director
 
 In the `package.json` file, the option `jopiMono_MustIgnoreDependencies` allows ignoring changing the versions for the dependencies.
 
-Without that the versions of the projects inside the workspace are upgraded when publishing a package to match current workspace version.  
+Without that, the versions of the projects inside the workspace are upgraded when publishing a package to match the current workspace version.  
+
+### Options jopiMono_MustForceLatestVersion
+
+In the `package.json` file, the option `jopiMono_MustForceLatestVersion` allows forcing 'latest' as version number when publishing.
+
+It applies to all workspace dependencies and is for special use case.
+
+### Options jopiMono_MustForceAnyVersion
+
+In the `package.json` file, the option `jopiMono_MustForceAnyVersion` allows forcing '*' (any) as version number when publishing.
+
+It applies to all workspace dependencies and is for special use case.
 
 ## 📚 License
 

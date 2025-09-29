@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import {applyEdits, type EditResult, modify} from 'jsonc-parser';
 import {execSync} from 'node:child_process';
-import "jopi-node-space";
+import NodeSpace from "jopi-node-space";
 
 import yargs from 'yargs';
 import {hideBin} from 'yargs/helpers';
@@ -368,36 +368,20 @@ async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, Packa
             let pkgInfos = infos[pkgName];
 
             if (pkgInfos) {
-                if (!isReverting) {
-                    let currentVersion = dependencies[pkgName];
-
-                    // Avoid updating the file if only the minor version has changed.
-                    // Doing this will avoid updating the package.json if no dependency
-                    // has a major / minor version update.
-                    //
-                    if (currentVersion===pkgInfos.version) continue;
-                }
-
                 let pkgVersion = isReverting ? pkgInfos.publicVersion : pkgInfos.version;
 
-                if (pkgVersion) {
-                    changes.push(() => {
-                        let newValue =  "workspace:^";
+                changes.push(() => {
+                    let newValue = "workspace:^";
+                    if (isDetaching) newValue = "^" + pkgVersion;
+                    if (mustForceUseOfLatest) newValue = "latest";
+                    if (mustForceUseOfAny) newValue = "latest";
 
-                        if (isDetaching) {
-                            newValue = "^" + pkgVersion;
-                        }
-
-                        const newModif = modify(jsonText, [key, pkgName], newValue, {})
-                        updated = updated ? updated.concat(newModif) : newModif;
-                    });
-                }
+                    const newModif = modify(jsonText, [key, pkgName], newValue, {})
+                    updated = updated ? updated.concat(newModif) : newModif;
+                });
             }
         }
     }
-
-    const isReverting = mode === "reverting";
-    const isDetaching = mode === "detach";
 
     const changes: (()=>void)[] = [];
 
@@ -407,6 +391,11 @@ async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, Packa
     if (json.jopiMono_MustIgnoreDependencies) {
         return;
     }
+
+    const isReverting = mode === "reverting";
+    const isDetaching = mode === "detach";
+    const mustForceUseOfLatest = json.jopiMono_MustForceLatestVersion;
+    const mustForceUseOfAny = json.jopiMono_MustForceAnyVersion;
 
     patch("dependencies", json.dependencies);
     patch("devDependencies", json.devDependencies);
