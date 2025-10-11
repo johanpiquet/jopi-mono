@@ -911,7 +911,20 @@ async function startUp() {
             });
         })
 
-        .command(["ws-detach <package>", "ws-remove <package>"], "Detach a project, removing dependencies of type workspace.", (yargs) => {
+        .command("ws-detach <package>", "Detach a project, removing dependencies of type workspace.", (yargs) => {
+            return yargs
+                .positional('package', {
+                    describe: 'The name of the package to detach',
+                    type: 'string',
+                    demandOption: true
+                });
+        }, async (argv) => {
+            await execWsDetachCommand({
+                package: argv.package as string
+            });
+        })
+
+        .command("ws-remove <package>", "Alias for ws-detach.", (yargs) => {
             return yargs
                 .positional('package', {
                     describe: 'The name of the package to detach',
@@ -939,7 +952,7 @@ async function startUp() {
         })
 
         .demandCommand(1, 'You must specify a valid command.')
-        .version("2.0").strict().help().parse();
+        .version("2.1").strict().help().parse();
 }
 
 const NPM_CONFIG_FILE = ".npmrc";
