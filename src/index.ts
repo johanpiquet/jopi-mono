@@ -911,7 +911,7 @@ async function startUp() {
             });
         })
 
-        .command("ws-detach <package>", "Detach a project, removing dependencies of type workspace.", (yargs) => {
+        .command(["ws-detach <package>", "ws-remove <package>"], "Detach a project, removing dependencies of type workspace.", (yargs) => {
             return yargs
                 .positional('package', {
                     describe: 'The name of the package to detach',
