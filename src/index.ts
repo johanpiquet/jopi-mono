@@ -764,8 +764,7 @@ async function execWsAddCommand(params: {
             repoUrl = `${gitAccount}/${repoName}`;
         }
 
-        let targetDir = params.dir;
-        if (!targetDir) targetDir = `packages/${repoName}`;
+        let targetDir = (params.dir || "packages") + "/" + repoName;
 
         console.log(`Cloning repository ${repoUrl} into ${targetDir}...`);
         
@@ -902,7 +901,7 @@ async function startUp() {
                 .option('dir', {
                     type: 'string',
                     description: 'Target directory name',
-                    demandOption: false
+                    demandOption: true
                 });
         }, async (argv) => {
             await execWsAddCommand({
