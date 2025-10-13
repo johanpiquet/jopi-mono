@@ -8,7 +8,6 @@
   "author": "Johan PIQUET",
   "description": "An helper for hybrid apps",
   "engines": {
-    "bun": "^1.2.18",
     "node": ">=22.18.0"
   },
   "type": "module",
