@@ -1,12 +1,12 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import {applyEdits, type EditResult, modify} from 'jsonc-parser';
-import {execSync} from 'node:child_process';
-import NodeSpace, {nFS} from "jopi-node-space";
+import { applyEdits, type EditResult, modify } from 'jsonc-parser';
+import { execSync } from 'node:child_process';
+import NodeSpace, { nFS } from "jopi-node-space";
 
 import yargs from 'yargs';
-import {hideBin} from 'yargs/helpers';
+import { hideBin } from 'yargs/helpers';
 
 interface PackageInfos {
     name: string;
@@ -23,7 +23,7 @@ interface PackageInfos {
 
 //region Cache
 
-let gCacheDir: string|undefined;
+let gCacheDir: string | undefined;
 
 function getCacheDir(): string {
     if (!gCacheDir) {
@@ -42,7 +42,7 @@ function getCacheFilePath(fileName: string, options?: CacheFileOptions): string 
     return path.join(getCacheDir(), ...subDirs, fileName);
 }
 
-async function getCacheFile_json<T>(fileName: string, options?: CacheFileOptions): Promise<T|undefined> {
+async function getCacheFile_json<T>(fileName: string, options?: CacheFileOptions): Promise<T | undefined> {
     let text = await getCacheFile(fileName, options);
     if (!text) return undefined;
 
@@ -64,7 +64,7 @@ function saveCacheFile_json(fileName: string, content: any, options?: CacheFileO
     return saveCacheFile(fileName, JSON.stringify(content, null, 2), options);
 }
 
-async function getCacheFile(fileName: string, options?: CacheFileOptions): Promise<string|undefined> {
+async function getCacheFile(fileName: string, options?: CacheFileOptions): Promise<string | undefined> {
     let filePath = getCacheFilePath(fileName, options);
 
     try {
@@ -86,18 +86,18 @@ async function saveCacheFile(fileName: string, content: string, options?: CacheF
 
 async function backupAllPackageJson(pkgInfos: Record<string, PackageInfos>) {
     async function backup(pkg: PackageInfos) {
-        let targetFile = getCacheFilePath(pkg.name + ".json", {subDir: ["backup"]});
+        let targetFile = getCacheFilePath(pkg.name + ".json", { subDir: ["backup"] });
         let content = await nFS.readTextFromFile(pkg.packageJsonFilePath);
         await nFS.writeTextToFile(targetFile, content, true);
     }
-    
+
     await Promise.all(Object.values(pkgInfos).map(async pkg => {
         await backup(pkg);
     }));
 }
 
 async function restoreThisPackage(pkg: PackageInfos) {
-    let targetFile = getCacheFilePath(pkg.name + ".json", {subDir: ["backup"]});
+    let targetFile = getCacheFilePath(pkg.name + ".json", { subDir: ["backup"] });
 
     if (await nFS.isFile(targetFile)) {
         let content = await nFS.readTextFromFile(targetFile);
@@ -118,7 +118,7 @@ async function restoreAllPackageJson(pkgInfos: Record<string, PackageInfos>) {
 //region Helpers
 
 interface CheckPackageHashOptions {
-    onPackageChecked?: (hasChangeDetect: boolean, pkg: PackageInfos)=>void;
+    onPackageChecked?: (hasChangeDetect: boolean, pkg: PackageInfos) => void;
 }
 
 async function searchWorkspaceDir(): Promise<string> {
@@ -257,7 +257,7 @@ async function findPackageJsonFiles(): Promise<Record<string, PackageInfos>> {
             isValidForPublish,
             name: pkgJson.name,
             version: pkgJson.version,
-            isPrivate: pkgJson.private===true,
+            isPrivate: pkgJson.private === true,
         }
     }
 
@@ -288,7 +288,7 @@ async function findPackageJsonFiles(): Promise<Record<string, PackageInfos>> {
     return await searchInDirectories(gCwd, {});
 }
 
-async function getPackage_latestModificationDate(pkg: PackageInfos): Promise<string|undefined> {
+async function getPackage_latestModificationDate(pkg: PackageInfos): Promise<string | undefined> {
     async function scanDirectories(dir: string): Promise<void> {
         const entries = await fs.readdir(dir, { withFileTypes: true });
 
@@ -296,7 +296,7 @@ async function getPackage_latestModificationDate(pkg: PackageInfos): Promise<str
             const fullPath = path.join(dir, entry.name);
 
             if (entry.isDirectory()) {
-                if (entry.name[0]==='.') continue;
+                if (entry.name[0] === '.') continue;
 
                 if (!excludeDirs.includes(entry.name)) {
                     dirCount++
@@ -359,7 +359,7 @@ const cacheFileName = "packages-hash.json";
 
 //region Actions
 
-async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, PackageInfos>, mode?: undefined|"reverting"|"detach") {
+async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, PackageInfos>, mode?: undefined | "reverting" | "detach") {
     function patch(key: string, dependencies: Record<string, string>) {
         if (!dependencies) return;
 
@@ -370,7 +370,7 @@ async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, Packa
                 let pkgVersion = isReverting ? pkgInfos.publicVersion : pkgInfos.version;
 
                 changes.push(() => {
-                    let newValue = "workspace:^";
+                    let newValue = WORKSPACE_ITEM_REF;
                     if (isDetaching) newValue = "^" + pkgVersion;
                     if (mustForceUseOfLatest) newValue = "latest";
                     if (mustForceUseOfAny) newValue = "latest";
@@ -382,7 +382,7 @@ async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, Packa
         }
     }
 
-    const changes: (()=>void)[] = [];
+    const changes: (() => void)[] = [];
 
     let jsonText = await fs.readFile(pkg.packageJsonFilePath, "utf-8");
     let json = JSON.parse(jsonText);
@@ -523,14 +523,14 @@ async function execCheckCommand() {
 
     await detectUpdatedPackages(pkgInfos, {
         onPackageChecked: (needUpdate, pkg) => {
-            if (needUpdate) console.log((`⚠️  ${pkg.name}`).padEnd(30) +  ` -> change detected`);
-            else console.log((`    ${pkg.name}`).padEnd(30) +  ` -> is unchanged`);
+            if (needUpdate) console.log((`⚠️  ${pkg.name}`).padEnd(30) + ` -> change detected`);
+            else console.log((`    ${pkg.name}`).padEnd(30) + ` -> is unchanged`);
         }
     });
 }
 
 async function execPublishCommand(params: {
-    packages: string[]|undefined,
+    packages: string[] | undefined,
     fake: boolean,
     noIncr: boolean,
     yes: boolean
@@ -589,7 +589,7 @@ async function execPublishCommand(params: {
         await incrementVersions(packagesToPublish, pkgInfos);
     }
 
-    let currentPackage: PackageInfos|undefined;
+    let currentPackage: PackageInfos | undefined;
 
     for (let key of packagesToPublish) {
         let pkg = pkgInfos[key];
@@ -606,7 +606,7 @@ async function execPublishCommand(params: {
 
         try {
             if (!params.fake) {
-                execSync(PUBLISH_COMMAND, {stdio: 'pipe', cwd: pkgRootDir});
+                execSync(PUBLISH_COMMAND, { stdio: 'pipe', cwd: pkgRootDir });
             }
 
             if (isUsingPublicRegistry) {
@@ -649,7 +649,7 @@ async function execPublishCommand(params: {
 }
 
 async function execRevertCommand(params: {
-    packages: string[]|undefined,
+    packages: string[] | undefined,
     fake: boolean
 }) {
     const pkgInfos = await findPackageJsonFiles();
@@ -690,8 +690,11 @@ async function execRevertCommand(params: {
     //
     if (hasChanges) {
         try {
-            console.log("✅ Clearing bun cache.")
-            execSync(COMMAND_CLEAN_CACHE__BUN);
+            if (useBun) {
+                console.log("✅ Clearing bun cache.")
+                execSync(COMMAND_CLEAN_CACHE__BUN);
+            }
+
             console.log("✅ Clearing node cache.")
             execSync(COMMAND_CLEAN_CACHE__NODE);
         } catch (e) {
@@ -707,7 +710,7 @@ async function execRevertCommand(params: {
 async function execInstallCommand() {
     try {
         console.log("✅  Installing dependencies with bun...");
-        execSync(COMMAND_INSTALL, {stdio: 'inherit', cwd: gCwd});
+        execSync(COMMAND_INSTALL, { stdio: 'inherit', cwd: gCwd });
         console.log("✅  Dependencies installed successfully.");
     } catch (error: any) {
         console.error("❌  Failed to install dependencies:", error.message);
@@ -718,7 +721,7 @@ async function execInstallCommand() {
 async function execUpdateCommand() {
     try {
         console.log("✅  Updating dependencies with bun...");
-        execSync(COMMAND_UPDATE, {stdio: 'inherit', cwd: gCwd});
+        execSync(COMMAND_UPDATE, { stdio: 'inherit', cwd: gCwd });
         console.log("✅  Dependencies updated successfully.");
     } catch (error: any) {
         console.error("❌  Failed to update dependencies:", error.message);
@@ -767,9 +770,9 @@ async function execWsAddCommand(params: {
         let targetDir = (params.dir || "packages") + "/" + repoName;
 
         console.log(`Cloning repository ${repoUrl} into ${targetDir}...`);
-        
+
         try {
-            execSync(`git clone ${repoUrl} ${targetDir}`, {stdio: 'pipe', cwd: gCwd});
+            execSync(`git clone ${repoUrl} ${targetDir}`, { stdio: 'pipe', cwd: gCwd });
             console.log(`✅  Repository cloned successfully into ${targetDir}.`);
         } catch (error: any) {
             // Afficher l'output seulement en cas d'erreur
@@ -780,7 +783,7 @@ async function execWsAddCommand(params: {
                 console.error(error.stderr.toString());
             }
             console.error("❌  Failed to clone repository:", error.message);
-        process.exit(1);
+            process.exit(1);
         }
 
     } catch (error: any) {
@@ -824,7 +827,7 @@ async function checkNpmAuth(): Promise<void> {
 
 async function startUp() {
     yargs(hideBin(process.argv))
-        .command("check", "List packages which have changes since last publication.", () => {}, async () => {
+        .command("check", "List packages which have changes since last publication.", () => { }, async () => {
             await execCheckCommand();
         })
 
@@ -853,20 +856,20 @@ async function startUp() {
                 });
         }, async (argv) => {
             await execPublishCommand({
-                packages: argv.packages as string[]|undefined,
+                packages: argv.packages as string[] | undefined,
                 fake: argv.fake,
                 noIncr: argv.noincr,
                 yes: argv.yes
             });
         })
 
-        .command("revert", "Revert package version number to the public version.",  (yargs) => {
+        .command("revert", "Revert package version number to the public version.", (yargs) => {
             return yargs
                 .option('packages', {
-                type: 'array',
-                description: 'List of package to revert.',
-                demandOption: false,
-            })
+                    type: 'array',
+                    description: 'List of package to revert.',
+                    demandOption: false,
+                })
                 .option('fake', {
                     type: 'boolean',
                     default: false,
@@ -874,20 +877,20 @@ async function startUp() {
                 });
         }, async (argv) => {
             await execRevertCommand({
-                packages: argv.packages as string[]|undefined,
+                packages: argv.packages as string[] | undefined,
                 fake: argv.fake
             });
         })
 
-        .command("versions", "Print info about package versions.",  () => {}, async () => {
+        .command("versions", "Print info about package versions.", () => { }, async () => {
             await execPrintPackagesVersion();
         })
 
-        .command("install", "Install dependencies using bun install.", () => {}, async () => {
+        .command("install", "Install dependencies using bun install.", () => { }, async () => {
             await execInstallCommand();
         })
 
-        .command("update", "Update dependencies using bun update.", () => {}, async () => {
+        .command("update", "Update dependencies using bun update.", () => { }, async () => {
             await execUpdateCommand();
         })
 
@@ -937,15 +940,15 @@ async function startUp() {
         })
 
         .command("tool", "Internal tools, for special cases.", (yargs) => {
-            yargs.command("restore", "Restore package.json backups.",  () => {}, async () => {
+            yargs.command("restore", "Restore package.json backups.", () => { }, async () => {
                 await execToolRestoreBackup();
             });
 
-            yargs.command("calchash", "Cache the current packages hash.",  () => {}, async () => {
+            yargs.command("calchash", "Cache the current packages hash.", () => { }, async () => {
                 await execToolCalcHash();
             });
 
-            yargs.command("setdepversion", "Set correction versions for workspace dependencies.",  () => {}, async () => {
+            yargs.command("setdepversion", "Set correction versions for workspace dependencies.", () => { }, async () => {
                 await execToolSetDepVersion();
             });
         })
@@ -957,13 +960,15 @@ async function startUp() {
 const NPM_CONFIG_FILE = ".npmrc";
 const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
 
+const useBun = false;
+
 const PUBLISH_COMMAND = "npm publish --access public";
 const COMMAND_CLEAN_CACHE__BUN = "bun pm cache rm";
 const COMMAND_CLEAN_CACHE__NODE = "npm cache clean --force";
-const COMMAND_INSTALL = "bun install";
-const COMMAND_UPDATE = "bun update";
+const COMMAND_INSTALL = useBun ? "bun install" : "yarn install";
+const COMMAND_UPDATE = useBun ? "bun update" : "yarn upgrade";
 const COMMAND_WHOIAM = "npm whoami";
-const COMMAND_DRY_RUN = "npm publish --dry-run --json";
+const WORKSPACE_ITEM_REF = useBun ? "*" : "workspace:^";
 
 const gCwd = await searchWorkspaceDir();
 const gNpmRegistry = await getNpmConfig(gCwd);

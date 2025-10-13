@@ -26,14 +26,11 @@
     "tsc": "tsc",
     "bun-publish": "npx tsc && bun publish",
     "untrack": "git rm -r --cached -- ./dist/**;",
-
     "install-jopimono": "rm ~/.bun/bin/jopimono; ln -s /Users/johan/Projets/jopi-rewrite-workspace/_others/jopi-mono/bin/jopi-mono.js ~/.bun/bin/jopi-mono",
-
     "test-publish-fake": "npx tsc; node ./dist/index.js publish jopi-rewrite --fake",
     "test-publish-no-incr": "npx tsc; node ./dist/index.js publish --fake --noincr",
     "test-publish-this": "npx tsc; node ./dist/index.js publish jopi-mono jopi-rewrite --fake",
     "test-revert": "npx tsc; node ./dist/index.js revert --fake",
-
     "test-help": "npx tsc; node ./dist/index.js --help",
     "test-versions": "npx tsc; node ./dist/index.js versions",
     "test-tool-restore": "npx tsc; node ./dist/index.js tool restore",
@@ -56,12 +53,11 @@
     "mime-types": "^3.0.1",
     "ws": "^8.18.3",
     "yargs": "^18.0.0",
-    "jopi-node-space": "workspace:^"
+    "jopi-node-space": "*"
   },
   "bin": {
     "jopi-mono": "bin/jopi-mono.js"
   },
-
   "publishedDate": "9/25/2025",
   "publicPublishedDate": "9/25/2025"
 }
