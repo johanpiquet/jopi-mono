@@ -3,7 +3,7 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { applyEdits, type EditResult, modify } from 'jsonc-parser';
 import { execSync } from 'node:child_process';
-import NodeSpace, { nFS } from "jopi-node-space";
+import NodeSpace, { ns_fs } from "jopi-node-space";
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -57,7 +57,7 @@ async function getCacheFile_json<T>(fileName: string, options?: CacheFileOptions
 
 async function deleteCacheFile(fileName: string): Promise<void> {
     let filePath = getCacheFilePath(fileName);
-    await nFS.unlink(filePath);
+    await ns_fs.unlink(filePath);
 }
 
 function saveCacheFile_json(fileName: string, content: any, options?: CacheFileOptions): Promise<void> {
@@ -68,7 +68,7 @@ async function getCacheFile(fileName: string, options?: CacheFileOptions): Promi
     let filePath = getCacheFilePath(fileName, options);
 
     try {
-        return await nFS.readTextFromFile(filePath);
+        return await ns_fs.readTextFromFile(filePath);
     }
     catch {
         return undefined;
@@ -77,7 +77,7 @@ async function getCacheFile(fileName: string, options?: CacheFileOptions): Promi
 
 async function saveCacheFile(fileName: string, content: string, options?: CacheFileOptions): Promise<void> {
     let filePath = getCacheFilePath(fileName, options);
-    await nFS.writeTextToFile(filePath, content);
+    await ns_fs.writeTextToFile(filePath, content);
 }
 
 //endregion
@@ -87,8 +87,8 @@ async function saveCacheFile(fileName: string, content: string, options?: CacheF
 async function backupAllPackageJson(pkgInfos: Record<string, PackageInfos>) {
     async function backup(pkg: PackageInfos) {
         let targetFile = getCacheFilePath(pkg.name + ".json", { subDir: ["backup"] });
-        let content = await nFS.readTextFromFile(pkg.packageJsonFilePath);
-        await nFS.writeTextToFile(targetFile, content, true);
+        let content = await ns_fs.readTextFromFile(pkg.packageJsonFilePath);
+        await ns_fs.writeTextToFile(targetFile, content, true);
     }
 
     await Promise.all(Object.values(pkgInfos).map(async pkg => {
@@ -99,9 +99,9 @@ async function backupAllPackageJson(pkgInfos: Record<string, PackageInfos>) {
 async function restoreThisPackage(pkg: PackageInfos) {
     let targetFile = getCacheFilePath(pkg.name + ".json", { subDir: ["backup"] });
 
-    if (await nFS.isFile(targetFile)) {
-        let content = await nFS.readTextFromFile(targetFile);
-        await nFS.writeTextToFile(pkg.packageJsonFilePath, content, true);
+    if (await ns_fs.isFile(targetFile)) {
+        let content = await ns_fs.readTextFromFile(targetFile);
+        await ns_fs.writeTextToFile(pkg.packageJsonFilePath, content, true);
     } else {
         console.log("No backup file found for", pkg.name, "can't restore");
     }
