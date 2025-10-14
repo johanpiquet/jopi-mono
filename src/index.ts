@@ -3,9 +3,9 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { applyEdits, type EditResult, modify } from 'jsonc-parser';
 import { execSync } from 'node:child_process';
-import NodeSpace from "jopi-node-space";
 import * as ns_fs from "jopi-node-space/ns_fs";
 import * as ns_timer from "jopi-node-space/ns_timer";
+import * as ns_term from "jopi-node-space/ns_term";
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -346,7 +346,7 @@ async function loadPackageHashInfos(pkgInfos: Record<string, PackageInfos>) {
         for (let pkg of Object.values(pkgInfos)) {
             if (!pkg.isValidForPublish) continue;
 
-            NodeSpace.term.consoleLogTemp(true, `Calculating hash for ${pkg.name}`);
+            ns_term.consoleLogTemp(true, `Calculating hash for ${pkg.name}`);
             pkg.packageHash = await getPackage_latestModificationDate(pkg);
             cache[pkg.name] = pkg.packageHash;
         }
@@ -540,7 +540,7 @@ async function execPublishCommand(params: {
     const isUsingPublicRegistry = gNpmRegistry === DEFAULT_NPM_REGISTRY;
 
     if (!params.yes && isUsingPublicRegistry) {
-        const response = await NodeSpace.term.askYesNo("⚠️  It's will use the official npm repository. Do you want to continue?", true);
+        const response = await ns_term.askYesNo("⚠️  It's will use the official npm repository. Do you want to continue?", true);
 
         if (!response) {
             console.log("❌  Canceled");
@@ -558,7 +558,7 @@ async function execPublishCommand(params: {
     const packagesToPublish = params.packages?.length ? params.packages : await detectUpdatedPackages(pkgInfos, {
         onPackageChecked: (_, pkg) => {
             if (isFirst) console.log();
-            NodeSpace.term.consoleLogTemp(true, "Checking changes: " + pkg.name);
+            ns_term.consoleLogTemp(true, "Checking changes: " + pkg.name);
         }
     });
 
