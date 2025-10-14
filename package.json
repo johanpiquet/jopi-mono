@@ -1,5 +1,5 @@
 {
-  "version": "2.0.6",
+  "version": "2.0.8",
   "private": false,
   "name": "jopi-mono",
   "license": "MIT",
@@ -45,6 +45,6 @@
   "bin": {
     "jopi-mono": "bin/jopi-mono.js"
   },
-  "publishedDate": "9/25/2025",
-  "publicPublishedDate": "9/25/2025"
+  "publishedDate": "10/14/2025",
+  "publicPublishedDate": "10/14/2025"
 }

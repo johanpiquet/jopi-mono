@@ -842,14 +842,15 @@ async function execWsDetachCommand(params: { package: string }) {
  */
 async function checkNpmAuth(): Promise<void> {
     try {
-        const _result = execSync(COMMAND_WHOIAM, { stdio: 'pipe', cwd: gCwd });
+        const _result = execSync(COMMAND_WHOIAM, { stdio: 'pipe', encoding: 'utf-8' });
         console.log(`✅  Authenticated as: ${_result.toString().trim()}`);
         return;
-    } catch {
+    } catch(e:any) {
+        if (!e.message.includes("ENEEDAUTH")) console.log(e);
     }
 
     console.error("❌  You are not authenticated with npm registry.");
-    console.error("Please run 'bun npm login' to authenticate before using this tool.");
+    console.error("Please run 'npm login' or 'npm adduser' to authenticate before using this tool.");
     process.exit(1);
 }
 
@@ -1013,7 +1014,7 @@ const COMMAND_INSTALL = useBun ? "bun install" : "yarn install";
 const COMMAND_UPDATE = useBun ? "bun update" : "yarn upgrade";
 const COMMAND_WHOIAM = "npm whoami";
 
-const WORKSPACE_ITEM_REF = useBun ? "*" : "workspace:^";
+const WORKSPACE_ITEM_REF = useBun ? "workspace:^" : "*";
 
 const gCwd = await searchWorkspaceDir();
 const gNpmRegistry = await getNpmConfig(gCwd);
