@@ -2,13 +2,14 @@ import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
 import { applyEdits, type EditResult, modify } from 'jsonc-parser';
-import { execSync } from 'node:child_process';
+import { execFileSync, execSync} from 'node:child_process';
 import * as ns_fs from "jopi-node-space/ns_fs";
 import * as ns_timer from "jopi-node-space/ns_timer";
 import * as ns_term from "jopi-node-space/ns_term";
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
+import * as process from "node:process";
 
 interface PackageInfos {
     name: string;
@@ -531,6 +532,31 @@ async function execCheckCommand() {
     });
 }
 
+async function execPackageCommand(params: { package: string, dir?: string }) {
+    const pkgInfos = await findPackageJsonFiles();
+    
+    let thisPkgInfo = pkgInfos[params.package];
+    
+    if (!thisPkgInfo) {
+        console.log("❌  The package " + params.package + " does not exist.");
+        process.exit(1);
+    }
+    
+    if (!params.dir) params.dir = "packageArchives";
+    await fs.mkdir(params.dir, { recursive: true });
+
+    let pkgDir = path.dirname(thisPkgInfo.packageJsonFilePath);
+    let genFileName = params.package + "-" + thisPkgInfo.version + ".tgz";
+    let genFilePath = path.join(pkgDir, genFileName);
+
+    console.log("✅  Creating the package for", params.package);
+    execFileSync("npm", ["pack"], {stdio: 'inherit', cwd: pkgDir, shell: false});
+
+    let finalFilePath = path.join(params.dir, genFileName);
+    await fs.rename(genFilePath, finalFilePath);
+    console.log("✅  Created at", finalFilePath);
+}
+
 async function execPublishCommand(params: {
     packages: string[] | undefined,
     fake: boolean,
@@ -544,7 +570,7 @@ async function execPublishCommand(params: {
 
         if (!response) {
             console.log("❌  Canceled");
-            process.exit(0);
+            process.exit(1);
         }
     }
 
@@ -608,7 +634,7 @@ async function execPublishCommand(params: {
 
         try {
             if (!params.fake) {
-                execSync(PUBLISH_COMMAND, { stdio: 'pipe', cwd: pkgRootDir });
+                execSync(COMMAND_PUBLISH, { stdio: 'pipe', cwd: pkgRootDir });
             }
 
             if (isUsingPublicRegistry) {
@@ -865,6 +891,22 @@ async function startUp() {
             });
         })
 
+        .command("pack [package]", "Create a package a of repo", (yargs) => {
+            return yargs
+                .positional('package', {
+                    type: 'string',
+                    describe: 'The package to pack.',
+                    demandOption: true,
+                })
+                .option('dir', {
+                    type: 'string',
+                    description: 'Target directory name',
+                    demandOption: false
+                });
+        }, async (argv) => {
+            await execPackageCommand({package: argv.package as string, dir: argv.dir});
+        })
+
         .command("revert", "Revert package version number to the public version.", (yargs) => {
             return yargs
                 .option('packages', {
@@ -964,12 +1006,13 @@ const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
 
 const useBun = false;
 
-const PUBLISH_COMMAND = "npm publish --access public";
+const COMMAND_PUBLISH = "npm publish --access public";
 const COMMAND_CLEAN_CACHE__BUN = "bun pm cache rm";
 const COMMAND_CLEAN_CACHE__NODE = "npm cache clean --force";
 const COMMAND_INSTALL = useBun ? "bun install" : "yarn install";
 const COMMAND_UPDATE = useBun ? "bun update" : "yarn upgrade";
 const COMMAND_WHOIAM = "npm whoami";
+
 const WORKSPACE_ITEM_REF = useBun ? "*" : "workspace:^";
 
 const gCwd = await searchWorkspaceDir();
