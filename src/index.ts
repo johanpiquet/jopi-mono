@@ -105,8 +105,7 @@ async function restoreThisPackage(pkg: PackageInfos) {
     if (await ns_fs.isFile(targetFile)) {
         let content = await ns_fs.readTextFromFile(targetFile);
         await ns_fs.writeTextToFile(pkg.packageJsonFilePath, content, true);
-    } else {
-        console.log("No backup file found for", pkg.name, "can't restore");
+        console.log("✅  Restored", pkg.name);
     }
 }
 
@@ -281,7 +280,7 @@ async function findPackageJsonFiles(): Promise<Record<string, PackageInfos>> {
                 }
             } else if (file === 'package.json') {
                 let infos = await extractPackageInfos(fullPath);
-                result[infos.name] = infos;
+                if (infos.name) result[infos.name] = infos;
             }
         }
 
@@ -532,6 +531,21 @@ async function execCheckCommand() {
     });
 }
 
+async function packThisPackage(pkgInfos: PackageInfos, outputDir: string) {
+    await ns_fs.mkDir(outputDir);
+
+    let pkgDir = path.dirname(pkgInfos.packageJsonFilePath);
+    let genFileName = pkgInfos.name + "-" + pkgInfos.version + ".tgz";
+    let genFilePath = path.join(pkgDir, genFileName);
+
+    execFileSync("npm", ["pack"], {stdio: 'inherit', cwd: pkgDir, shell: false});
+
+    let finalFilePath = path.join(outputDir, genFileName);
+    await fs.rename(genFilePath, finalFilePath);
+
+    return finalFilePath;
+}
+
 async function execPackageCommand(params: { package: string, dir?: string }) {
     const pkgInfos = await findPackageJsonFiles();
     
@@ -543,18 +557,10 @@ async function execPackageCommand(params: { package: string, dir?: string }) {
     }
     
     if (!params.dir) params.dir = "packageArchives";
-    await fs.mkdir(params.dir, { recursive: true });
 
-    let pkgDir = path.dirname(thisPkgInfo.packageJsonFilePath);
-    let genFileName = params.package + "-" + thisPkgInfo.version + ".tgz";
-    let genFilePath = path.join(pkgDir, genFileName);
-
-    console.log("✅  Creating the package for", params.package);
-    execFileSync("npm", ["pack"], {stdio: 'inherit', cwd: pkgDir, shell: false});
-
-    let finalFilePath = path.join(params.dir, genFileName);
-    await fs.rename(genFilePath, finalFilePath);
-    console.log("✅  Created at", finalFilePath);
+    console.log("✅  Creating the package for", thisPkgInfo.name);
+    let genFileName = await packThisPackage(thisPkgInfo, params.dir);
+    console.log("✅  Created at", ns_fs.getRelativePath(genFileName, process.cwd()));
 }
 
 async function execPublishCommand(params: {
@@ -574,7 +580,9 @@ async function execPublishCommand(params: {
         }
     }
 
-    await checkNpmAuth();
+    if (!option_dontDirectPublish) {
+        await checkNpmAuth();
+    }
 
     const pkgInfos = await findPackageJsonFiles();
     await loadPackageHashInfos(pkgInfos);
@@ -618,33 +626,47 @@ async function execPublishCommand(params: {
     }
 
     let currentPackage: PackageInfos | undefined;
+    let outputPackageDir = path.join(gCwd, "_tmpJopiMono");
+    let script = "";
+
+    if (option_dontDirectPublish) {
+        await ns_fs.rmDir(outputPackageDir);
+    }
 
     for (let key of packagesToPublish) {
         let pkg = pkgInfos[key];
         if (!pkg || !pkg.isValidForPublish) continue;
         currentPackage = pkg;
 
-        console.log("✅  Update dependencies to neutral version.");
+        console.log("✅  Fix dependencies version.");
         await setDependenciesFor(pkg, pkgInfos, "detach");
 
         console.log("✅  Set publish date.");
         await setUpdateDateAndPublicVersion(pkg, isUsingPublicRegistry);
 
+        pkg.packageHash = await getPackage_latestModificationDate(pkg);
         const pkgRootDir = path.resolve(path.dirname(pkg.packageJsonFilePath));
 
         try {
-            if (!params.fake) {
-                execSync(COMMAND_PUBLISH, { stdio: 'pipe', cwd: pkgRootDir });
+            if (option_dontDirectPublish) {
+                let genFilePath = await packThisPackage(pkg, outputPackageDir);
+                script += "npm publish --access public " + ns_fs.resolve(genFilePath) + "\n";
+            } else {
+                if (!params.fake) {
+                    execSync(COMMAND_PUBLISH, {stdio: 'pipe', cwd: pkgRootDir});
+                    await ns_timer.tick(100);
+                }
+
+                if (isUsingPublicRegistry) {
+                    console.log((`✅  ${pkg.name}`).padEnd(30) + ` -> published. Version is now ${pkg.version} (was ${pkg.publicVersion})`);
+                } else {
+                    console.log((`✅  ${pkg.name}`).padEnd(30) + ` -> published (private repo). Version is now ${pkg.version}`);
+                }
             }
 
             if (isUsingPublicRegistry) {
-                console.log((`✅  ${pkg.name}`).padEnd(30) + ` -> published. Version is now ${pkg.version} (was ${pkg.publicVersion})`);
                 pkg.publicVersion = pkg.version;
-            } else {
-                console.log((`✅  ${pkg.name}`).padEnd(30) + ` -> published (private repo). Version is now ${pkg.version}`);
             }
-
-            if (isUsingPublicRegistry) pkg.publicVersion = pkg.version;
 
             console.log("✅  Restore dependencies to workspace version.");
             await setDependenciesFor(pkg, pkgInfos);
@@ -661,10 +683,15 @@ async function execPublishCommand(params: {
                 await restoreThisPackage(currentPackage);
             }
         }
+    }
 
-        pkg.packageHash = await getPackage_latestModificationDate(pkg);
+    if (option_dontDirectPublish) {
+        script = "#!/usr/bin/env sh\n\n" + script;
+        script += "# In case of problem, do:\n# npx jopi-mono tool restore"
+        let scriptPath = path.join(outputPackageDir, "publish.sh");
+        await ns_fs.writeTextToFile(scriptPath, script);
 
-        await ns_timer.tick(100);
+        ns_term.logBgRed("🌟 Publish script generated at", scriptPath);
     }
 
     if (params.fake) {
@@ -718,7 +745,7 @@ async function execRevertCommand(params: {
     //
     if (hasChanges) {
         try {
-            if (useBun) {
+            if (option_useBun) {
                 console.log("✅ Clearing bun cache.")
                 execSync(COMMAND_CLEAN_CACHE__BUN);
             }
@@ -841,6 +868,7 @@ async function execWsDetachCommand(params: { package: string }) {
  * Check if the user is authenticated with npm registry
  */
 async function checkNpmAuth(): Promise<void> {
+    // Warning, don't use Yarn!
     try {
         const _result = execSync(COMMAND_WHOIAM, { stdio: 'pipe', encoding: 'utf-8' });
         console.log(`✅  Authenticated as: ${_result.toString().trim()}`);
@@ -851,6 +879,7 @@ async function checkNpmAuth(): Promise<void> {
 
     console.error("❌  You are not authenticated with npm registry.");
     console.error("Please run 'npm login' or 'npm adduser' to authenticate before using this tool.");
+    console.error("⚠️⚠️ Warning, don't use with Yarn ⚠️⚠️");
     process.exit(1);
 }
 
@@ -1005,16 +1034,25 @@ async function startUp() {
 const NPM_CONFIG_FILE = ".npmrc";
 const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
 
-const useBun = false;
+/**
+ * Allow migrating to Yarn and not use bun.
+ */
+const option_useBun = false;
+
+/**
+ * npm security isn't compatible with Yarn (npm whoami throws error, also npm publish).
+ * For this reason, we create a script file to execute manually.
+ */
+const option_dontDirectPublish = true;
 
 const COMMAND_PUBLISH = "npm publish --access public";
 const COMMAND_CLEAN_CACHE__BUN = "bun pm cache rm";
 const COMMAND_CLEAN_CACHE__NODE = "npm cache clean --force";
-const COMMAND_INSTALL = useBun ? "bun install" : "yarn install";
-const COMMAND_UPDATE = useBun ? "bun update" : "yarn upgrade";
+const COMMAND_INSTALL = option_useBun ? "bun install" : "yarn install";
+const COMMAND_UPDATE = option_useBun ? "bun update" : "yarn upgrade";
 const COMMAND_WHOIAM = "npm whoami";
 
-const WORKSPACE_ITEM_REF = useBun ? "workspace:^" : "*";
+const WORKSPACE_ITEM_REF = option_useBun ? "workspace:^" : "*";
 
 const gCwd = await searchWorkspaceDir();
 const gNpmRegistry = await getNpmConfig(gCwd);
