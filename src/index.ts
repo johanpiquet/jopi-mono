@@ -636,7 +636,7 @@ async function execPublishCommand(params: {
 
         pkg.packageHash = await getPackage_latestModificationDate(pkg);
 
-        await NodeSpace.timer.tick(100);
+        await ns_timer.tick(100);
     }
 
     if (params.fake) {
