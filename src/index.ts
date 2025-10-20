@@ -560,7 +560,7 @@ async function execPackageCommand(params: { package: string, dir?: string }) {
 
     console.log("✅  Creating the package for", thisPkgInfo.name);
     let genFileName = await packThisPackage(thisPkgInfo, params.dir);
-    console.log("✅  Created at", jk_fs.getRelativePath(genFileName, process.cwd()));
+    console.log("✅  Created at", jk_fs.getRelativePath(process.cwd(), genFileName));
 }
 
 async function execPublishCommand(params: {
