@@ -3,9 +3,9 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { applyEdits, type EditResult, modify } from 'jsonc-parser';
 import { execFileSync, execSync} from 'node:child_process';
-import * as ns_fs from "jopi-node-space/ns_fs";
-import * as ns_timer from "jopi-node-space/ns_timer";
-import * as ns_term from "jopi-node-space/ns_term";
+import * as ns_fs from "jopi-toolkit/ns_fs";
+import * as ns_timer from "jopi-toolkit/ns_timer";
+import * as ns_term from "jopi-toolkit/ns_term";
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';

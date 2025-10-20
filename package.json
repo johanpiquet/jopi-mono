@@ -40,7 +40,7 @@
     "mime-types": "^3.0.1",
     "ws": "^8.18.3",
     "yargs": "^18.0.0",
-    "jopi-node-space": "*"
+    "jopi-toolkit": "*"
   },
   "bin": {
     "jopi-mono": "bin/jopi-mono.js"
