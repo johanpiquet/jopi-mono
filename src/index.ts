@@ -3,9 +3,9 @@ import * as path from "node:path";
 import * as os from "node:os";
 import { applyEdits, type EditResult, modify } from 'jsonc-parser';
 import { execFileSync, execSync} from 'node:child_process';
-import * as ns_fs from "jopi-toolkit/ns_fs";
-import * as ns_timer from "jopi-toolkit/ns_timer";
-import * as ns_term from "jopi-toolkit/ns_term";
+import * as jk_fs from "jopi-toolkit/jk_fs";
+import * as jk_timer from "jopi-toolkit/jk_timer";
+import * as jk_term from "jopi-toolkit/jk_term";
 
 import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
@@ -60,7 +60,7 @@ async function getCacheFile_json<T>(fileName: string, options?: CacheFileOptions
 
 async function deleteCacheFile(fileName: string): Promise<void> {
     let filePath = getCacheFilePath(fileName);
-    await ns_fs.unlink(filePath);
+    await jk_fs.unlink(filePath);
 }
 
 function saveCacheFile_json(fileName: string, content: any, options?: CacheFileOptions): Promise<void> {
@@ -71,7 +71,7 @@ async function getCacheFile(fileName: string, options?: CacheFileOptions): Promi
     let filePath = getCacheFilePath(fileName, options);
 
     try {
-        return await ns_fs.readTextFromFile(filePath);
+        return await jk_fs.readTextFromFile(filePath);
     }
     catch {
         return undefined;
@@ -80,7 +80,7 @@ async function getCacheFile(fileName: string, options?: CacheFileOptions): Promi
 
 async function saveCacheFile(fileName: string, content: string, options?: CacheFileOptions): Promise<void> {
     let filePath = getCacheFilePath(fileName, options);
-    await ns_fs.writeTextToFile(filePath, content);
+    await jk_fs.writeTextToFile(filePath, content);
 }
 
 //endregion
@@ -90,8 +90,8 @@ async function saveCacheFile(fileName: string, content: string, options?: CacheF
 async function backupAllPackageJson(pkgInfos: Record<string, PackageInfos>) {
     async function backup(pkg: PackageInfos) {
         let targetFile = getCacheFilePath(pkg.name + ".json", { subDir: ["backup"] });
-        let content = await ns_fs.readTextFromFile(pkg.packageJsonFilePath);
-        await ns_fs.writeTextToFile(targetFile, content, true);
+        let content = await jk_fs.readTextFromFile(pkg.packageJsonFilePath);
+        await jk_fs.writeTextToFile(targetFile, content, true);
     }
 
     await Promise.all(Object.values(pkgInfos).map(async pkg => {
@@ -102,9 +102,9 @@ async function backupAllPackageJson(pkgInfos: Record<string, PackageInfos>) {
 async function restoreThisPackage(pkg: PackageInfos) {
     let targetFile = getCacheFilePath(pkg.name + ".json", { subDir: ["backup"] });
 
-    if (await ns_fs.isFile(targetFile)) {
-        let content = await ns_fs.readTextFromFile(targetFile);
-        await ns_fs.writeTextToFile(pkg.packageJsonFilePath, content, true);
+    if (await jk_fs.isFile(targetFile)) {
+        let content = await jk_fs.readTextFromFile(targetFile);
+        await jk_fs.writeTextToFile(pkg.packageJsonFilePath, content, true);
         console.log("✅  Restored", pkg.name);
     }
 }
@@ -346,7 +346,7 @@ async function loadPackageHashInfos(pkgInfos: Record<string, PackageInfos>) {
         for (let pkg of Object.values(pkgInfos)) {
             if (!pkg.isValidForPublish) continue;
 
-            ns_term.consoleLogTemp(true, `Calculating hash for ${pkg.name}`);
+            jk_term.consoleLogTemp(true, `Calculating hash for ${pkg.name}`);
             pkg.packageHash = await getPackage_latestModificationDate(pkg);
             cache[pkg.name] = pkg.packageHash;
         }
@@ -532,7 +532,7 @@ async function execCheckCommand() {
 }
 
 async function packThisPackage(pkgInfos: PackageInfos, outputDir: string) {
-    await ns_fs.mkDir(outputDir);
+    await jk_fs.mkDir(outputDir);
 
     let pkgDir = path.dirname(pkgInfos.packageJsonFilePath);
     let genFileName = pkgInfos.name + "-" + pkgInfos.version + ".tgz";
@@ -560,7 +560,7 @@ async function execPackageCommand(params: { package: string, dir?: string }) {
 
     console.log("✅  Creating the package for", thisPkgInfo.name);
     let genFileName = await packThisPackage(thisPkgInfo, params.dir);
-    console.log("✅  Created at", ns_fs.getRelativePath(genFileName, process.cwd()));
+    console.log("✅  Created at", jk_fs.getRelativePath(genFileName, process.cwd()));
 }
 
 async function execPublishCommand(params: {
@@ -572,7 +572,7 @@ async function execPublishCommand(params: {
     const isUsingPublicRegistry = gNpmRegistry === DEFAULT_NPM_REGISTRY;
 
     if (!params.yes && isUsingPublicRegistry) {
-        const response = await ns_term.askYesNo("⚠️  It's will use the official npm repository. Do you want to continue?", true);
+        const response = await jk_term.askYesNo("⚠️  It's will use the official npm repository. Do you want to continue?", true);
 
         if (!response) {
             console.log("❌  Canceled");
@@ -592,7 +592,7 @@ async function execPublishCommand(params: {
     const packagesToPublish = params.packages?.length ? params.packages : await detectUpdatedPackages(pkgInfos, {
         onPackageChecked: (_, pkg) => {
             if (isFirst) console.log();
-            ns_term.consoleLogTemp(true, "Checking changes: " + pkg.name);
+            jk_term.consoleLogTemp(true, "Checking changes: " + pkg.name);
         }
     });
 
@@ -630,7 +630,7 @@ async function execPublishCommand(params: {
     let script = "";
 
     if (option_dontDirectPublish) {
-        await ns_fs.rmDir(outputPackageDir);
+        await jk_fs.rmDir(outputPackageDir);
     }
 
     for (let key of packagesToPublish) {
@@ -650,11 +650,11 @@ async function execPublishCommand(params: {
         try {
             if (option_dontDirectPublish) {
                 let genFilePath = await packThisPackage(pkg, outputPackageDir);
-                script += "npm publish --access public " + ns_fs.resolve(genFilePath) + "\n";
+                script += "npm publish --access public " + jk_fs.resolve(genFilePath) + "\n";
             } else {
                 if (!params.fake) {
                     execSync(COMMAND_PUBLISH, {stdio: 'pipe', cwd: pkgRootDir});
-                    await ns_timer.tick(100);
+                    await jk_timer.tick(100);
                 }
 
                 if (isUsingPublicRegistry) {
@@ -689,9 +689,9 @@ async function execPublishCommand(params: {
         script = "#!/usr/bin/env sh\n\n" + script;
         script += "# In case of problem, do:\n# npx jopi-mono tool restore"
         let scriptPath = path.join(outputPackageDir, "publish.sh");
-        await ns_fs.writeTextToFile(scriptPath, script);
+        await jk_fs.writeTextToFile(scriptPath, script);
 
-        ns_term.logBgRed("🌟 Publish script generated at", scriptPath);
+        jk_term.logBgRed("🌟 Publish script generated at", scriptPath);
     }
 
     if (params.fake) {
