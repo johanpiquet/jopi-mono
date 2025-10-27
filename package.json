@@ -11,8 +11,14 @@
     "node": ">=22.18.0"
   },
   "type": "module",
-  "main": "dist/index.js",
   "types": "dist/index.d.ts",
+
+  "exports": {
+    ".": {
+      "default": "./dist/index.js",
+      "bun": "./src/index.ts"
+    }
+  },
   "files": [
     "dist",
     "bin",
