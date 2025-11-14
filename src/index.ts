@@ -687,8 +687,14 @@ async function execPublishCommand(params: {
 
         try {
             if (!option_directPublish) {
-                let genFilePath = await packThisPackage(pkg, outputPackageDir);
-                script += "npm publish --access public " + jk_fs.resolve(genFilePath) + "\n";
+                script += (await gPackageManager.createPublishScript({
+                    packageInfos: pkg,
+                    packageRootDir: pkgRootDir,
+                    scriptTempDir: outputPackageDir,
+                }));
+
+                script += "\necho ✅  >>> >>> >>> Published " + pkg.name + "  👍\n";
+
             } else {
                 if (!params.fake) {
                     await gPackageManager.publish(pkgRootDir);
@@ -696,7 +702,7 @@ async function execPublishCommand(params: {
                 }
 
                 if (isUsingPublicRegistry) {
-                    console.log((`✅  ${pkg.name}`).padEnd(30) + ` -> published. Version is now ${pkg.version} (was ${pkg.publicVersion})`);
+                    console.log((`✅  ${pkg.name}`).padEnd(30) + ` -> published. Version is now ${pkg.version} (was ${pkg.publicVersion ?? "unpublished"})`);
                 } else {
                     console.log((`✅  ${pkg.name}`).padEnd(30) + ` -> published (private repo). Version is now ${pkg.version}`);
                 }
@@ -725,7 +731,9 @@ async function execPublishCommand(params: {
 
     if (!option_directPublish) {
         script = "#!/usr/bin/env sh\n\n" + script;
-        script += "# In case of problem, do:\n# npx jopi-mono tool restore"
+        script += "\n# Deleting this temp dir"
+        script += "\nrm -rf " + outputPackageDir
+        script += "\n\n# In case of problem, do:\n# npx jopi-mono tool restore"
         let scriptPath = path.join(outputPackageDir, "publish.sh");
         await jk_fs.writeTextToFile(scriptPath, script);
 
@@ -901,9 +909,9 @@ async function execWsDetachCommand(params: { package: string }) {
  * Check if the user is authenticated with npm registry
  */
 async function checkNpmAuth(): Promise<void> {
-    // Warning, don't use Yarn v1 which is deprecated!
+    // Warning, don't use old Yarn (v1,v2,v3) which are deprecated!
     try {
-        const whoIAm = gPackageManager.whoIAm();
+        const whoIAm = await gPackageManager.whoIAm();
         console.log(`✅  Authenticated as: ${whoIAm}`);
         return;
     } catch(e:any) {
@@ -919,7 +927,8 @@ function packageManagerError(packageManager: any) {
     if (packageManager) console.error(`(found package manager:${packageManager.name}@${packageManager.version})`);
     process.exit(1);
 }
-async function startUp() {
+
+async function selectPackageManagerDriver() {
     const packageManager = await findPackageManager();
 
     if (!packageManagerError) {
@@ -939,6 +948,10 @@ async function startUp() {
     }
 
     //console.log(`🔥 Package manager is ${gPackageManager.name} v${packageManager.versionMajor} 🔥`);
+}
+
+async function startUp() {
+    await selectPackageManagerDriver();
 
     yargs(hideBin(process.argv))
         .command("check", "List packages which have changes since last publication.", () => { }, async () => {
@@ -1087,14 +1100,11 @@ async function startUp() {
         .version(VERSION).strict().help().parse();
 }
 
-const NPM_CONFIG_FILE = ".npmrc";
-const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
-
-/**
- * npm security isn't compatible with Yarn (npm whoami throws error, also npm publish).
- * For this reason, we create a script file to execute manually.
- */
-const option_directPublish = true;
+interface CreatePublishScriptParams {
+    packageInfos: PackageInfos,
+    packageRootDir: string,
+    scriptTempDir: string,
+}
 
 interface PackageManager {
     name: string;
@@ -1106,6 +1116,7 @@ interface PackageManager {
     update(cwd: string): Promise<void>;
     whoIAm(): Promise<string>;
     helpAuth(): string;
+    createPublishScript(params: CreatePublishScriptParams): Promise<string>;
 }
 
 class BunPackageManager implements PackageManager {
@@ -1138,6 +1149,13 @@ class BunPackageManager implements PackageManager {
             + "\nPlease run 'npm login' or 'npm adduser' to authenticate before using this tool."
             + "\n⚠️⚠️ Warning, don't use with Yarn v1 ⚠️⚠️";
     }
+
+    async createPublishScript(params: CreatePublishScriptParams): Promise<string> {
+        let genFilePath = await packThisPackage(params.packageInfos, params.scriptTempDir);
+        let fileName = jk_fs.basename(genFilePath);
+        return `# Publish to version ${params.packageInfos.version}
+npm publish --access public ${fileName}`;
+    }
 }
 
 class YarnPackageManager implements PackageManager {
@@ -1145,6 +1163,7 @@ class YarnPackageManager implements PackageManager {
     readonly workspaceRefString: string = "workspace:^";
 
     async publish(cwd: string) {
+        // Don't use yarn npm publish since doesn't support piloted mode.
         execSync("yarn npm publish --access public", {stdio: 'pipe', cwd});
     }
 
@@ -1161,7 +1180,7 @@ class YarnPackageManager implements PackageManager {
     }
 
     async whoIAm(): Promise<string> {
-        let r = execSync("yarn npm whoami", { stdio: 'pipe', encoding: 'utf-8' });
+        let r = execSync("npm whoami", { stdio: 'pipe', encoding: 'utf-8' });
         return r.toString().trim();
     }
 
@@ -1170,11 +1189,27 @@ class YarnPackageManager implements PackageManager {
             + "\nPlease run 'npm login' or 'npm adduser' to authenticate before using this tool."
             + "\n⚠️⚠️ Warning, don't use with Yarn v1 ⚠️⚠️";
     }
+
+    async createPublishScript(params: CreatePublishScriptParams): Promise<string> {
+        return `# Publish to version ${params.packageInfos.version}
+cd ${params.packageRootDir} && yarn npm publish --access public`;
+    }
 }
 
+const NPM_CONFIG_FILE = ".npmrc";
+const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
 let gPackageManager: PackageManager;
 
 const gCwd = await searchWorkspaceDir();
 const gNpmRegistry = await getNpmConfig(gCwd);
 
+/**
+ * npm security isn't compatible with Yarn (npm whoami throws error, also npm publish).
+ * For this reason, we create a script file to execute manually.
+ */
+const option_directPublish = false;
+
 await startUp();
+
+// ** Notes **
+// npm view jopi-mono --registry http://localhost:4873/ version         --> Get "2.0.10"
