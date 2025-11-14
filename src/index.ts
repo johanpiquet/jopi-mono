@@ -11,6 +11,8 @@ import yargs from 'yargs';
 import { hideBin } from 'yargs/helpers';
 import * as process from "node:process";
 
+const VERSION = "2.2";
+
 interface PackageInfos {
     name: string;
 
@@ -272,15 +274,22 @@ async function findPackageJsonFiles(): Promise<Record<string, PackageInfos>> {
 
         for (const file of files) {
             const fullPath = path.join(dir, file);
-            const stat = await fs.stat(fullPath);
 
-            if (stat.isDirectory()) {
-                if (file !== 'node_modules') {
-                    await searchInDirectories(fullPath, result);
+            try {
+                const stat = await fs.stat(fullPath);
+
+                if (stat.isDirectory()) {
+                    if (file !== 'node_modules') {
+                        await searchInDirectories(fullPath, result);
+                    }
+                } else if (stat.isFile()) {
+                    if (file === 'package.json') {
+                        let infos = await extractPackageInfos(fullPath);
+                        if (infos.name) result[infos.name] = infos;
+                    }
                 }
-            } else if (file === 'package.json') {
-                let infos = await extractPackageInfos(fullPath);
-                if (infos.name) result[infos.name] = infos;
+            }
+            catch {
             }
         }
 
@@ -1015,28 +1024,23 @@ async function startUp() {
                 await execToolCalcHash();
             });
 
-            yargs.command("setdepversion", "Set correction versions for workspace dependencies.", () => { }, async () => {
+            yargs.command("setdepversion", "Set correct versions for workspace dependencies.", () => { }, async () => {
                 await execToolSetDepVersion();
             });
         })
 
         .demandCommand(1, 'You must specify a valid command.')
-        .version("2.1").strict().help().parse();
+        .version(VERSION).strict().help().parse();
 }
 
 const NPM_CONFIG_FILE = ".npmrc";
 const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
 
 /**
- * Allow migrating to Yarn and not use bun.
- */
-const option_useBun = false;
-
-/**
  * npm security isn't compatible with Yarn (npm whoami throws error, also npm publish).
  * For this reason, we create a script file to execute manually.
  */
-const option_dontDirectPublish = true;
+const option_dontDirectPublish = false;
 
 interface PackageManager {
     publish(cwd: string): Promise<void>;
