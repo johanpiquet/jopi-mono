@@ -149,36 +149,6 @@ async function searchWorkspaceDir(): Promise<string> {
 }
 
 /**
- * Get information about the ".npmrc" file.
- * @param cwd
- */
-async function getNpmConfig(cwd: string): Promise<string> {
-    const homeDir = os.homedir();
-
-    const npmrcPaths = [
-        path.join(cwd, NPM_CONFIG_FILE),
-        path.join(homeDir, NPM_CONFIG_FILE)
-    ];
-
-    for (const configPath of npmrcPaths) {
-        try {
-            const content = await fs.readFile(configPath, 'utf8');
-            const lines = content.split('\n');
-
-            for (const line of lines) {
-                const [key, value] = line.split('=').map(s => s.trim());
-                if (key === 'registry') {
-                    return value;
-                }
-            }
-        } catch {
-        }
-    }
-
-    return DEFAULT_NPM_REGISTRY;
-}
-
-/**
  * Return a list of packages which content is updated.
  * Which means that if doing a dry-run, then
  */
@@ -665,7 +635,10 @@ async function execPublishCommand(params: {
 
     let currentPackage: PackageInfos | undefined;
     let outputPackageDir = path.join(gCwd, "_tmpJopiMono");
-    let script = "";
+    let script = "# Publishing packages.";
+    script += "\n# -> Registry: " + gNpmRegistry;
+    script += "\n# -> User: " + gNpmUser
+    script += "\n";
 
     if (!option_directPublish) {
         await jk_fs.rmDir(outputPackageDir);
@@ -687,14 +660,15 @@ async function execPublishCommand(params: {
 
         try {
             if (!option_directPublish) {
+                script += `\n# Publish to version ${pkg.version}. Package: ${pkg.name}\n`;
+
                 script += (await gPackageManager.createPublishScript({
                     packageInfos: pkg,
                     packageRootDir: pkgRootDir,
                     scriptTempDir: outputPackageDir,
                 }));
 
-                script += "\necho ✅  >>> >>> >>> Published " + pkg.name + "  👍\n";
-
+                script += "\necho ✅__Published " + pkg.name + "__👍\n";
             } else {
                 if (!params.fake) {
                     await gPackageManager.publish(pkgRootDir);
@@ -953,6 +927,12 @@ async function selectPackageManagerDriver() {
 async function startUp() {
     await selectPackageManagerDriver();
 
+    gNpmRegistry = await gPackageManager.getRegistryUrl();
+    gNpmUser = await gPackageManager.whoIAm();
+
+    console.log("✔ Registry URL:", gNpmRegistry);
+    console.log("✔ You are:", gNpmUser);
+
     yargs(hideBin(process.argv))
         .command("check", "List packages which have changes since last publication.", () => { }, async () => {
             await execCheckCommand();
@@ -1117,6 +1097,8 @@ interface PackageManager {
     whoIAm(): Promise<string>;
     helpAuth(): string;
     createPublishScript(params: CreatePublishScriptParams): Promise<string>;
+
+    getRegistryUrl(): Promise<string>;
 }
 
 class BunPackageManager implements PackageManager {
@@ -1140,7 +1122,7 @@ class BunPackageManager implements PackageManager {
     }
 
     async whoIAm(): Promise<string> {
-        let r = execSync("npm whoami", { stdio: 'pipe', encoding: 'utf-8' });
+        let r = execSync("bun pm whoami", { stdio: 'pipe', encoding: 'utf-8' });
         return r.toString().trim();
     }
 
@@ -1153,8 +1135,33 @@ class BunPackageManager implements PackageManager {
     async createPublishScript(params: CreatePublishScriptParams): Promise<string> {
         let genFilePath = await packThisPackage(params.packageInfos, params.scriptTempDir);
         let fileName = jk_fs.basename(genFilePath);
-        return `# Publish to version ${params.packageInfos.version}
-npm publish --access public ${fileName}`;
+        return `npm publish --access public ${fileName}`;
+    }
+
+    async getRegistryUrl(): Promise<string> {
+        const homeDir = os.homedir();
+
+        const npmrcPaths = [
+            path.join(gCwd, NPM_CONFIG_FILE),
+            path.join(homeDir, NPM_CONFIG_FILE)
+        ];
+
+        for (const configPath of npmrcPaths) {
+            try {
+                const content = await fs.readFile(configPath, 'utf8');
+                const lines = content.split('\n');
+
+                for (const line of lines) {
+                    const [key, value] = line.split('=').map(s => s.trim());
+                    if (key === 'registry') {
+                        return value;
+                    }
+                }
+            } catch {
+            }
+        }
+
+        return DEFAULT_NPM_REGISTRY;
     }
 }
 
@@ -1181,7 +1188,13 @@ class YarnPackageManager implements PackageManager {
 
     async whoIAm(): Promise<string> {
         let r = execSync("npm whoami", { stdio: 'pipe', encoding: 'utf-8' });
-        return r.toString().trim();
+        let name = r.toString().trim();
+
+        if (name.split("\n").length>1) {
+            throw new Error(`Yarn can't get user name`);
+        }
+
+        return name;
     }
 
     helpAuth(): string {
@@ -1191,8 +1204,18 @@ class YarnPackageManager implements PackageManager {
     }
 
     async createPublishScript(params: CreatePublishScriptParams): Promise<string> {
-        return `# Publish to version ${params.packageInfos.version}
-cd ${params.packageRootDir} && yarn npm publish --access public`;
+        return `cd ${params.packageRootDir} && yarn npm publish --access public`;
+    }
+
+    async getRegistryUrl(): Promise<string> {
+        let r = execSync("yarn config get npmRegistryServer", { stdio: 'pipe', encoding: 'utf-8' });
+        let url = r.toString().trim();
+
+        if (url.split("\n").length>1) {
+            throw new Error(`Yarn can't get registry url`);
+        }
+
+        return url;
     }
 }
 
@@ -1201,7 +1224,8 @@ const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
 let gPackageManager: PackageManager;
 
 const gCwd = await searchWorkspaceDir();
-const gNpmRegistry = await getNpmConfig(gCwd);
+let gNpmRegistry: string;
+let gNpmUser: string;
 
 /**
  * npm security isn't compatible with Yarn (npm whoami throws error, also npm publish).
