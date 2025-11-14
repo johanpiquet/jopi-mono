@@ -1,14 +1,14 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import { applyEdits, type EditResult, modify } from 'jsonc-parser';
-import { execFileSync, execSync} from 'node:child_process';
+import {applyEdits, type EditResult, modify} from 'jsonc-parser';
+import {execFileSync, execSync} from 'node:child_process';
 import * as jk_fs from "jopi-toolkit/jk_fs";
 import * as jk_timer from "jopi-toolkit/jk_timer";
 import * as jk_term from "jopi-toolkit/jk_term";
 
 import yargs from 'yargs';
-import { hideBin } from 'yargs/helpers';
+import {hideBin} from 'yargs/helpers';
 import * as process from "node:process";
 
 const VERSION = "2.2";
@@ -588,10 +588,6 @@ async function execPublishCommand(params: {
         }
     }
 
-    if (option_directPublish) {
-        await checkNpmAuth();
-    }
-
     const pkgInfos = await findPackageJsonFiles();
     await loadPackageHashInfos(pkgInfos);
 
@@ -668,7 +664,7 @@ async function execPublishCommand(params: {
                     scriptTempDir: outputPackageDir,
                 }));
 
-                script += "\necho ✅__Published " + pkg.name + "__👍\n";
+                script += "\necho ✅  Published " + pkg.name + "\n";
             } else {
                 if (!params.fake) {
                     await gPackageManager.publish(pkgRootDir);
@@ -883,10 +879,10 @@ async function execWsDetachCommand(params: { package: string }) {
  * Check if the user is authenticated with npm registry
  */
 async function checkNpmAuth(): Promise<void> {
-    // Warning, don't use old Yarn (v1,v2,v3) which are deprecated!
+    // Warning, don't use old Yarn (v1,v2,v3) which is deprecated!
     try {
-        const whoIAm = await gPackageManager.whoIAm();
-        console.log(`✅  Authenticated as: ${whoIAm}`);
+        gNpmUser = await gPackageManager.whoIAm();
+        console.log(`🌟 Authenticated as: ${gNpmUser}`);
         return;
     } catch(e:any) {
         if (!e.message.includes("ENEEDAUTH")) console.log(e);
@@ -928,10 +924,9 @@ async function startUp() {
     await selectPackageManagerDriver();
 
     gNpmRegistry = await gPackageManager.getRegistryUrl();
-    gNpmUser = await gPackageManager.whoIAm();
-
-    console.log("✔ Registry URL:", gNpmRegistry);
-    console.log("✔ You are:", gNpmUser);
+    console.log("🌟 Registry URL:", gNpmRegistry);
+    await checkNpmAuth();
+    console.log();
 
     yargs(hideBin(process.argv))
         .command("check", "List packages which have changes since last publication.", () => { }, async () => {
@@ -1129,7 +1124,6 @@ class BunPackageManager implements PackageManager {
     helpAuth(): string {
         return "❌  You are not authenticated with npm registry."
             + "\nPlease run 'npm login' or 'npm adduser' to authenticate before using this tool."
-            + "\n⚠️⚠️ Warning, don't use with Yarn v1 ⚠️⚠️";
     }
 
     async createPublishScript(params: CreatePublishScriptParams): Promise<string> {
@@ -1187,20 +1181,19 @@ class YarnPackageManager implements PackageManager {
     }
 
     async whoIAm(): Promise<string> {
-        let r = execSync("npm whoami", { stdio: 'pipe', encoding: 'utf-8' });
-        let name = r.toString().trim();
+        let r = execSync("yarn npm whoami", {stdio: 'pipe', encoding: 'utf-8'});
+        let lines = r.toString().trim().split("\n");
 
-        if (name.split("\n").length>1) {
-            throw new Error(`Yarn can't get user name`);
+        if (lines[0].includes("YN0000:")) {
+            return lines[0].split("YN0000:")[1].trim();
         }
 
-        return name;
+        throw new Error("ENEEDAUTH");
     }
 
     helpAuth(): string {
         return "❌  You are not authenticated with npm registry."
-            + "\nPlease run 'npm login' or 'npm adduser' to authenticate before using this tool."
-            + "\n⚠️⚠️ Warning, don't use with Yarn v1 ⚠️⚠️";
+            + "\nPlease run 'yarn npm login' or 'yarn npm adduser' to authenticate before using this tool.";
     }
 
     async createPublishScript(params: CreatePublishScriptParams): Promise<string> {

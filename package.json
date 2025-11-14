@@ -1,6 +1,5 @@
 {
   "version": "2.0.66",
-  "private": false,
   "name": "jopi-mono",
   "license": "MIT",
   "homepage": "https://github.com/johanpiquet/jopi-mono",
@@ -12,7 +11,6 @@
   },
   "type": "module",
   "types": "dist/index.d.ts",
-
   "exports": {
     ".": {
       "default": "./dist/index.js",
@@ -29,30 +27,26 @@
   "scripts": {
     "build": "npx tsc",
     "clean": "rm -rf ./dist .turbo tsconfig.tsbuildinfo",
-
     "tsc": "tsc",
     "bun-publish": "npx tsc && bun publish",
     "untrack": "git rm -r --cached -- ./dist/**;",
-
     "publish:jopi-mono": "node ./dist/index.js -- jopi-mono publish jopi-mono"
   },
   "devDependencies": {
     "@types/bun": "latest",
-    "@types/node": "latest",
-    "@types/mime-types": "latest"
+    "@types/mime-types": "latest",
+    "@types/node": "latest"
   },
   "dependencies": {
     "@types/ws": "^8.18.1",
     "@types/yargs": "^17.0.33",
+    "jopi-toolkit": "workspace:^",
     "jsonc-parser": "^3.3.1",
     "mime-types": "^3.0.1",
     "ws": "^8.18.3",
-    "yargs": "^18.0.0",
-    "jopi-toolkit": "workspace:^"
+    "yargs": "^18.0.0"
   },
-  "bin": {
-    "jopi-mono": "bin/jopi-mono.js"
-  },
+  "bin": "bin/jopi-mono.js",
   "publishedDate": "11/14/2025",
   "publicPublishedDate": "11/14/2025"
 }
