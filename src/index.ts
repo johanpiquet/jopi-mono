@@ -275,21 +275,18 @@ async function findPackageJsonFiles(): Promise<Record<string, PackageInfos>> {
         for (const file of files) {
             const fullPath = path.join(dir, file);
 
-            try {
-                const stat = await fs.stat(fullPath);
+            const stat = await jk_fs.getFileStat(fullPath);
+            if (!stat) continue;
 
-                if (stat.isDirectory()) {
-                    if (file !== 'node_modules') {
-                        await searchInDirectories(fullPath, result);
-                    }
-                } else if (stat.isFile()) {
-                    if (file === 'package.json') {
-                        let infos = await extractPackageInfos(fullPath);
-                        if (infos.name) result[infos.name] = infos;
-                    }
+            if (stat.isDirectory()) {
+                if (file !== 'node_modules') {
+                    await searchInDirectories(fullPath, result);
                 }
-            }
-            catch {
+            } else if (stat.isFile()) {
+                if (file === 'package.json') {
+                    let infos = await extractPackageInfos(fullPath);
+                    if (infos.name) result[infos.name] = infos;
+                }
             }
         }
 
@@ -364,6 +361,38 @@ async function loadPackageHashInfos(pkgInfos: Record<string, PackageInfos>) {
     }
 }
 
+async function findPackageManager(): Promise<{ name: string; version: string; versionMajor: number; }> {
+    let wpDir = await searchWorkspaceDir();
+    //
+    if (!wpDir) {
+        console.error("Can't find workspace dir");
+        process.exit(1);
+    }
+
+    let packageManager: string;
+
+    try {
+        let packageJson = await jk_fs.readTextFromFile(jk_fs.join(wpDir, "package.json"));
+        let asJson = JSON.parse(packageJson);
+        packageManager = asJson.packageManager;
+    }
+    catch {
+        console.error("Can't read package.json");
+        process.exit(1);
+    }
+
+    let idx = packageManager.indexOf("@");
+    let name = packageManager.substring(0, idx);
+    let version = packageManager.substring(idx + 1);
+    let versionMajor = parseInt(version.split(".")[0]);
+
+    return {
+        name,
+        version,
+        versionMajor
+    };
+}
+
 const cacheFileName = "packages-hash.json";
 
 //endregion
@@ -381,7 +410,7 @@ async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, Packa
                 let pkgVersion = isReverting ? pkgInfos.publicVersion : pkgInfos.version;
 
                 changes.push(() => {
-                    let newValue = packageManager.workspaceRefString;
+                    let newValue = gPackageManager.workspaceRefString;
                     if (isDetaching) newValue = "^" + pkgVersion;
                     if (mustForceUseOfLatest) newValue = "latest";
                     if (mustForceUseOfAny) newValue = "latest";
@@ -589,7 +618,7 @@ async function execPublishCommand(params: {
         }
     }
 
-    if (!option_dontDirectPublish) {
+    if (option_directPublish) {
         await checkNpmAuth();
     }
 
@@ -638,7 +667,7 @@ async function execPublishCommand(params: {
     let outputPackageDir = path.join(gCwd, "_tmpJopiMono");
     let script = "";
 
-    if (option_dontDirectPublish) {
+    if (!option_directPublish) {
         await jk_fs.rmDir(outputPackageDir);
     }
 
@@ -657,12 +686,12 @@ async function execPublishCommand(params: {
         const pkgRootDir = path.resolve(path.dirname(pkg.packageJsonFilePath));
 
         try {
-            if (option_dontDirectPublish) {
+            if (!option_directPublish) {
                 let genFilePath = await packThisPackage(pkg, outputPackageDir);
                 script += "npm publish --access public " + jk_fs.resolve(genFilePath) + "\n";
             } else {
                 if (!params.fake) {
-                    await packageManager.publish(pkgRootDir);
+                    await gPackageManager.publish(pkgRootDir);
                     await jk_timer.tick(100);
                 }
 
@@ -694,7 +723,7 @@ async function execPublishCommand(params: {
         }
     }
 
-    if (option_dontDirectPublish) {
+    if (!option_directPublish) {
         script = "#!/usr/bin/env sh\n\n" + script;
         script += "# In case of problem, do:\n# npx jopi-mono tool restore"
         let scriptPath = path.join(outputPackageDir, "publish.sh");
@@ -755,7 +784,7 @@ async function execRevertCommand(params: {
     if (hasChanges) {
         try {
             console.log("✅ Clearing cache.")
-            await packageManager.cleanCache();
+            await gPackageManager.cleanCache();
         } catch (e) {
             console.error("Can't clean local cache", e);
         }
@@ -769,7 +798,7 @@ async function execRevertCommand(params: {
 async function execInstallCommand() {
     try {
         console.log("✅  Installing dependencies...");
-        await packageManager.install(gCwd)
+        await gPackageManager.install(gCwd)
         console.log("✅  Dependencies installed successfully.");
     } catch (error: any) {
         console.error("❌  Failed to install dependencies:", error.message);
@@ -780,7 +809,7 @@ async function execInstallCommand() {
 async function execUpdateCommand() {
     try {
         console.log("✅  Updating dependencies...");
-        packageManager.update(gCwd);
+        gPackageManager.update(gCwd);
         console.log("✅  Dependencies updated successfully.");
     } catch (error: any) {
         console.error("❌  Failed to update dependencies:", error.message);
@@ -872,20 +901,45 @@ async function execWsDetachCommand(params: { package: string }) {
  * Check if the user is authenticated with npm registry
  */
 async function checkNpmAuth(): Promise<void> {
-    // Warning, don't use Yarn v1 which is depreacted!
+    // Warning, don't use Yarn v1 which is deprecated!
     try {
-        const whoIAm = packageManager.whoIAm();
+        const whoIAm = gPackageManager.whoIAm();
         console.log(`✅  Authenticated as: ${whoIAm}`);
         return;
     } catch(e:any) {
         if (!e.message.includes("ENEEDAUTH")) console.log(e);
     }
 
-    console.error(packageManager.helpAuth());
+    console.error(gPackageManager.helpAuth());
     process.exit(1);
 }
 
+function packageManagerError(packageManager: any) {
+    console.error("Invalid package manager. Please use yarn or bun as package manager.")
+    if (packageManager) console.error(`(found package manager:${packageManager.name}@${packageManager.version})`);
+    process.exit(1);
+}
 async function startUp() {
+    const packageManager = await findPackageManager();
+
+    if (!packageManagerError) {
+        packageManagerError(packageManager);
+        return;
+    }
+
+    if (packageManager.name==="bun") {
+        gPackageManager = new BunPackageManager();
+    } else if (packageManager.name==="yarn") {
+        if (packageManager.versionMajor<3) {
+            console.log("Please use yarn (>=v3) as package manager");
+        }
+        gPackageManager = new YarnPackageManager();
+    } else {
+        packageManagerError(packageManager);
+    }
+
+    //console.log(`🔥 Package manager is ${gPackageManager.name} v${packageManager.versionMajor} 🔥`);
+
     yargs(hideBin(process.argv))
         .command("check", "List packages which have changes since last publication.", () => { }, async () => {
             await execCheckCommand();
@@ -1040,19 +1094,24 @@ const DEFAULT_NPM_REGISTRY = "https://registry.npmjs.org/";
  * npm security isn't compatible with Yarn (npm whoami throws error, also npm publish).
  * For this reason, we create a script file to execute manually.
  */
-const option_dontDirectPublish = false;
+const option_directPublish = true;
 
 interface PackageManager {
+    name: string;
+    workspaceRefString: string;
+
     publish(cwd: string): Promise<void>;
     cleanCache(): Promise<void>;
     install(cwd: string): Promise<void>;
     update(cwd: string): Promise<void>;
     whoIAm(): Promise<string>;
     helpAuth(): string;
-    workspaceRefString: string;
 }
 
 class BunPackageManager implements PackageManager {
+    readonly name = "bun";
+    readonly workspaceRefString: string = "workspace:^";
+
     async publish(cwd: string) {
         execSync("npm publish --access public", {stdio: 'pipe', cwd});
     }
@@ -1079,11 +1138,41 @@ class BunPackageManager implements PackageManager {
             + "\nPlease run 'npm login' or 'npm adduser' to authenticate before using this tool."
             + "\n⚠️⚠️ Warning, don't use with Yarn v1 ⚠️⚠️";
     }
-
-    public readonly workspaceRefString: string = "workspace:^";
 }
 
-const packageManager: PackageManager = new BunPackageManager();
+class YarnPackageManager implements PackageManager {
+    readonly name = "yarn";
+    readonly workspaceRefString: string = "workspace:^";
+
+    async publish(cwd: string) {
+        execSync("yarn npm publish --access public", {stdio: 'pipe', cwd});
+    }
+
+    async cleanCache() {
+        execSync("yarn cache clean");
+    }
+
+    async install(cwd: string) {
+        execSync("yarn install", { stdio: 'inherit', cwd });
+    }
+
+    async update(cwd: string) {
+        execSync("yarn up", { stdio: 'inherit', cwd });
+    }
+
+    async whoIAm(): Promise<string> {
+        let r = execSync("yarn npm whoami", { stdio: 'pipe', encoding: 'utf-8' });
+        return r.toString().trim();
+    }
+
+    helpAuth(): string {
+        return "❌  You are not authenticated with npm registry."
+            + "\nPlease run 'npm login' or 'npm adduser' to authenticate before using this tool."
+            + "\n⚠️⚠️ Warning, don't use with Yarn v1 ⚠️⚠️";
+    }
+}
+
+let gPackageManager: PackageManager;
 
 const gCwd = await searchWorkspaceDir();
 const gNpmRegistry = await getNpmConfig(gCwd);
