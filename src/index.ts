@@ -372,7 +372,7 @@ async function setDependenciesFor(pkg: PackageInfos, infos: Record<string, Packa
                 let pkgVersion = isReverting ? pkgInfos.publicVersion : pkgInfos.version;
 
                 changes.push(() => {
-                    let newValue = WORKSPACE_ITEM_REF;
+                    let newValue = packageManager.workspaceRefString;
                     if (isDetaching) newValue = "^" + pkgVersion;
                     if (mustForceUseOfLatest) newValue = "latest";
                     if (mustForceUseOfAny) newValue = "latest";
@@ -653,7 +653,7 @@ async function execPublishCommand(params: {
                 script += "npm publish --access public " + jk_fs.resolve(genFilePath) + "\n";
             } else {
                 if (!params.fake) {
-                    execSync(COMMAND_PUBLISH, {stdio: 'pipe', cwd: pkgRootDir});
+                    await packageManager.publish(pkgRootDir);
                     await jk_timer.tick(100);
                 }
 
@@ -745,15 +745,10 @@ async function execRevertCommand(params: {
     //
     if (hasChanges) {
         try {
-            if (option_useBun) {
-                console.log("✅ Clearing bun cache.")
-                execSync(COMMAND_CLEAN_CACHE__BUN);
-            }
-
-            console.log("✅ Clearing node cache.")
-            execSync(COMMAND_CLEAN_CACHE__NODE);
+            console.log("✅ Clearing cache.")
+            await packageManager.cleanCache();
         } catch (e) {
-            console.error("Can't clean bun local cache", e);
+            console.error("Can't clean local cache", e);
         }
     }
 
@@ -764,8 +759,8 @@ async function execRevertCommand(params: {
 
 async function execInstallCommand() {
     try {
-        console.log("✅  Installing dependencies with bun...");
-        execSync(COMMAND_INSTALL, { stdio: 'inherit', cwd: gCwd });
+        console.log("✅  Installing dependencies...");
+        await packageManager.install(gCwd)
         console.log("✅  Dependencies installed successfully.");
     } catch (error: any) {
         console.error("❌  Failed to install dependencies:", error.message);
@@ -775,8 +770,8 @@ async function execInstallCommand() {
 
 async function execUpdateCommand() {
     try {
-        console.log("✅  Updating dependencies with bun...");
-        execSync(COMMAND_UPDATE, { stdio: 'inherit', cwd: gCwd });
+        console.log("✅  Updating dependencies...");
+        packageManager.update(gCwd);
         console.log("✅  Dependencies updated successfully.");
     } catch (error: any) {
         console.error("❌  Failed to update dependencies:", error.message);
@@ -868,18 +863,16 @@ async function execWsDetachCommand(params: { package: string }) {
  * Check if the user is authenticated with npm registry
  */
 async function checkNpmAuth(): Promise<void> {
-    // Warning, don't use Yarn!
+    // Warning, don't use Yarn v1 which is depreacted!
     try {
-        const _result = execSync(COMMAND_WHOIAM, { stdio: 'pipe', encoding: 'utf-8' });
-        console.log(`✅  Authenticated as: ${_result.toString().trim()}`);
+        const whoIAm = packageManager.whoIAm();
+        console.log(`✅  Authenticated as: ${whoIAm}`);
         return;
     } catch(e:any) {
         if (!e.message.includes("ENEEDAUTH")) console.log(e);
     }
 
-    console.error("❌  You are not authenticated with npm registry.");
-    console.error("Please run 'npm login' or 'npm adduser' to authenticate before using this tool.");
-    console.error("⚠️⚠️ Warning, don't use with Yarn ⚠️⚠️");
+    console.error(packageManager.helpAuth());
     process.exit(1);
 }
 
@@ -1045,14 +1038,48 @@ const option_useBun = false;
  */
 const option_dontDirectPublish = true;
 
-const COMMAND_PUBLISH = "npm publish --access public";
-const COMMAND_CLEAN_CACHE__BUN = "bun pm cache rm";
-const COMMAND_CLEAN_CACHE__NODE = "npm cache clean --force";
-const COMMAND_INSTALL = option_useBun ? "bun install" : "yarn install";
-const COMMAND_UPDATE = option_useBun ? "bun update" : "yarn upgrade";
-const COMMAND_WHOIAM = "npm whoami";
+interface PackageManager {
+    publish(cwd: string): Promise<void>;
+    cleanCache(): Promise<void>;
+    install(cwd: string): Promise<void>;
+    update(cwd: string): Promise<void>;
+    whoIAm(): Promise<string>;
+    helpAuth(): string;
+    workspaceRefString: string;
+}
 
-const WORKSPACE_ITEM_REF = option_useBun ? "workspace:^" : "*";
+class BunPackageManager implements PackageManager {
+    async publish(cwd: string) {
+        execSync("npm publish --access public", {stdio: 'pipe', cwd});
+    }
+
+    async cleanCache() {
+        execSync("bun pm cache rm");
+    }
+
+    async install(cwd: string) {
+        execSync("bun install", { stdio: 'inherit', cwd });
+    }
+
+    async update(cwd: string) {
+        execSync("bun update", { stdio: 'inherit', cwd });
+    }
+
+    async whoIAm(): Promise<string> {
+        let r = execSync("npm whoami", { stdio: 'pipe', encoding: 'utf-8' });
+        return r.toString().trim();
+    }
+
+    helpAuth(): string {
+        return "❌  You are not authenticated with npm registry."
+            + "\nPlease run 'npm login' or 'npm adduser' to authenticate before using this tool."
+            + "\n⚠️⚠️ Warning, don't use with Yarn v1 ⚠️⚠️";
+    }
+
+    public readonly workspaceRefString: string = "workspace:^";
+}
+
+const packageManager: PackageManager = new BunPackageManager();
 
 const gCwd = await searchWorkspaceDir();
 const gNpmRegistry = await getNpmConfig(gCwd);
