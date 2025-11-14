@@ -632,8 +632,14 @@ async function execPublishCommand(params: {
     let currentPackage: PackageInfos | undefined;
     let outputPackageDir = path.join(gCwd, "_tmpJopiMono");
     let script = "# Publishing packages.";
-    script += "\n# -> Registry: " + gNpmRegistry;
-    script += "\n# -> User: " + gNpmUser
+    script += "\n# -> Current registry: " + gNpmRegistry;
+    script += "\n# -> Current user: " + gNpmUser
+    script += "\n";
+    script += "\n# You can change registry by doing:";
+    script += "\n# --> Official one:";
+    script += "\n#       npm config set registry https://registry.npmjs.org";
+    script += "\n# --> Local Verdaccio:";
+    script += "\n#       npm config set registry http://127.0.0.1:4873/";
     script += "\n";
 
     if (!option_directPublish) {
@@ -913,6 +919,7 @@ async function selectPackageManagerDriver() {
             console.log("Please use yarn (>=v3) as package manager");
         }
         gPackageManager = new YarnPackageManager();
+        //gPackageManager = new BunPackageManager();
     } else {
         packageManagerError(packageManager);
     }
@@ -1197,7 +1204,7 @@ class YarnPackageManager implements PackageManager {
     }
 
     async createPublishScript(params: CreatePublishScriptParams): Promise<string> {
-        return `cd ${params.packageRootDir} && yarn npm publish --access public`;
+        return `cd ${params.packageRootDir} && npm publish --access public`;
     }
 
     async getRegistryUrl(): Promise<string> {
@@ -1224,9 +1231,10 @@ let gNpmUser: string;
  * npm security isn't compatible with Yarn (npm whoami throws error, also npm publish).
  * For this reason, we create a script file to execute manually.
  */
-const option_directPublish = false;
+const option_directPublish = true;
 
 await startUp();
 
 // ** Notes **
 // npm view jopi-mono --registry http://localhost:4873/ version         --> Get "2.0.10"
+// npm config set registry
