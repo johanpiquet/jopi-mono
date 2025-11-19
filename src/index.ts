@@ -1232,7 +1232,7 @@ let gNpmUser: string;
  * npm security isn't compatible with Yarn (npm whoami throws error, also npm publish).
  * For this reason, we create a script file to execute manually.
  */
-const option_directPublish = true;
+const option_directPublish = false;
 
 await startUp();
 
