@@ -148,6 +148,18 @@ async function searchWorkspaceDir(): Promise<string> {
     return process.cwd();
 }
 
+async function searchPackageJsonFile(): Promise<string|undefined> {
+    let currentDir = process.cwd();
+
+    while (currentDir !== path.parse(currentDir).root) {
+        const packageJsonPath = path.join(currentDir, 'package.json');
+        if (await jk_fs.isFile(packageJsonPath)) return packageJsonPath;
+        currentDir = path.dirname(currentDir);
+    }
+
+    return undefined;
+}
+
 /**
  * Return a list of packages which content is updated.
  * Which means that if doing a dry-run, then
@@ -880,6 +892,78 @@ async function execWsDetachCommand(params: { package: string }) {
     console.log(`✅  Project ${params.package} has been detached.`);
 }
 
+async function execLinkAddPackage() {
+    let pkgJsonFilePath = await searchPackageJsonFile();
+    if (!pkgJsonFilePath) throw "package.json not found";
+
+    let packageName = "";
+    let pkgJson: any;
+
+    try { pkgJson = JSON.parse(await jk_fs.readTextFromFile(pkgJsonFilePath)); }
+    catch { throw `Invalid package.json (${pkgJsonFilePath})`; }
+    //
+    if (!pkgJson.name) throw "The package must have a name. See package.json";
+
+    packageName = pkgJson.name;
+
+    const homeDir = os.homedir();
+    let configFile = jk_fs.join(homeDir, ".config", "jopi-mono", "link-packages.json");
+
+    let config: any = {};
+
+    if (await jk_fs.isFile(configFile)) {
+        config = JSON.parse(await jk_fs.readTextFromFile(configFile));
+    }
+
+    config[packageName] = jk_fs.dirname(pkgJsonFilePath);
+    await jk_fs.writeTextToFile(configFile, JSON.stringify(config, null, 4));
+}
+
+async function execLinkUpdatePackage({packageName}: {packageName: string}) {
+    const homeDir = os.homedir();
+    let configFile = jk_fs.join(homeDir, ".config", "jopi-mono", "link-packages.json");
+
+    let config: any = {};
+
+    if (await jk_fs.isFile(configFile)) {
+        config = JSON.parse(await jk_fs.readTextFromFile(configFile));
+    }
+
+    if (!config[packageName]) {
+        console.error(`Package ${packageName} is not linked.\n> Use 'jopi-mono link-add' to link it for his directory.`);
+        process.exit(1);
+    }
+
+    let srcDir = config[packageName] as string;
+
+    let pkgJsonFilePath = await searchPackageJsonFile();
+    //
+    if (!pkgJsonFilePath) {
+        console.error("package.json not found");
+        process.exit(1);
+    }
+
+    let nodeModulesDir = jk_fs.join(jk_fs.dirname(pkgJsonFilePath), "node_modules");
+    let dstDir = jk_fs.join(nodeModulesDir, packageName);
+
+    if (dstDir.includes(srcDir + "/") || dstDir.includes(srcDir + "\\")) {
+        console.error("The destination is inside the source directory. Please move it outside!.")
+        process.exit(1);
+    }
+
+    // Case of a symlink link.
+    try { await jk_fs.unlink(dstDir); } catch {}
+
+    // Case of an existing directory.
+    try { await jk_fs.rmDir(dstDir); } catch {}
+
+    await jk_fs.copyDirectory(srcDir, dstDir);
+
+    await jk_fs.rmDir(jk_fs.join(dstDir, ".git"));
+    await jk_fs.rmDir(jk_fs.join(dstDir, ".turbo"));
+    await jk_fs.rmDir(jk_fs.join(dstDir, "node_modules"));
+}
+
 //endregion
 
 /**
@@ -1018,6 +1102,21 @@ async function startUp() {
 
         .command("update", "Update dependencies using bun update.", () => { }, async () => {
             await execUpdateCommand();
+        })
+
+        .command("link-add", "Link the current package.", () => { }, async () => {
+            await execLinkAddPackage();
+        })
+
+        .command("link-update <packageName>", "Update the linked package in the current install.", (yargs) => {
+            return yargs
+                .positional('packageName', {
+                    type: 'string',
+                    describe: 'The package to link.',
+                    demandOption: true,
+                });
+        }, async (argv) => {
+            await execLinkUpdatePackage({packageName: argv.packageName});
         })
 
         .command("ws-add <url>", "Clone a git repository into the workspace.", (yargs) => {

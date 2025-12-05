@@ -30,7 +30,9 @@
     "tsc": "tsc",
     "bun-publish": "npx tsc && bun publish",
     "untrack": "git rm -r --cached -- ./dist/**;",
-    "publish:jopi-mono": "node ./dist/index.js -- jopi-mono publish jopi-mono"
+    "test:publish:jopi-mono": "npx jopi-mono publish jopi-mono",
+    "test:link-add": "npx jopi-mono link-add",
+    "test:link-update": "cd ../../test && npx jopi-mono link-update jopi-mono"
   },
   "devDependencies": {
     "@types/bun": "latest",
