@@ -1107,7 +1107,7 @@ async function startUp() {
             await execPackageCommand({package: argv.package as string, dir: argv.dir});
         })
 
-        .command("revert", "Revert package version number to the public version.", (yargs) => {
+        .command("versions-revert", "Revert package version number to the public version.", (yargs) => {
             return yargs
                 .option('packages', {
                     type: 'array',
