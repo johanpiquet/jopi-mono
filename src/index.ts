@@ -925,51 +925,61 @@ async function execLinkAddPackage() {
     if (list.length) console.log(`Other available packages: ${jk_term.C_GREEN}${list.join(", ")}${jk_term.T_RESET}`);
 }
 
-async function execLinkUpdatePackage({packageName}: {packageName: string}) {
+async function execLinkUpdatePackage({packageNames}: {packageNames: string[]}) {
     const homeDir = os.homedir();
-    let configFile = jk_fs.join(homeDir, ".config", "jopi-mono", "link-packages.json");
-
+    const configFile = jk_fs.join(homeDir, ".config", "jopi-mono", "link-packages.json");
     let config: any = {};
 
     if (await jk_fs.isFile(configFile)) {
         config = JSON.parse(await jk_fs.readTextFromFile(configFile));
     }
 
-    if (!config[packageName]) {
-        console.error(`Package ${packageName} is not linked.\n> Use 'jopi-mono link-add' to link it for his directory.`);
-        process.exit(1);
+    for (let packageName of packageNames) {
+        if (!config[packageName]) {
+            console.error(`Package ${packageName} is not linked.\n> Use 'jopi-mono link-add' to link it for his directory.`);
+            process.exit(1);
+        }
     }
 
-    let srcDir = config[packageName] as string;
-
-    let pkgJsonFilePath = await searchPackageJsonFile();
+    const pkgJsonFilePath = await searchPackageJsonFile();
     //
     if (!pkgJsonFilePath) {
         console.error("package.json not found");
         process.exit(1);
     }
 
-    let nodeModulesDir = jk_fs.join(jk_fs.dirname(pkgJsonFilePath), "node_modules");
-    let dstDir = jk_fs.join(nodeModulesDir, packageName);
+    const nodeModulesDir = jk_fs.join(jk_fs.dirname(pkgJsonFilePath), "node_modules");
 
-    if (dstDir.includes(srcDir + "/") || dstDir.includes(srcDir + "\\")) {
-        console.error("The destination is inside the source directory. Please move it outside!.")
-        process.exit(1);
+    for (let packageName of packageNames) {
+        let srcDir = config[packageName] as string;
+
+        let dstDir = jk_fs.join(nodeModulesDir, packageName);
+
+        if (dstDir.includes(srcDir + "/") || dstDir.includes(srcDir + "\\")) {
+            console.error("The destination is inside the source directory. Please move it outside!.")
+            process.exit(1);
+        }
+
+        // Case of a symlink link.
+        try {
+            await jk_fs.unlink(dstDir);
+        } catch {
+        }
+
+        // Case of an existing directory.
+        try {
+            await jk_fs.rmDir(dstDir);
+        } catch {
+        }
+
+        await jk_fs.copyDirectory(srcDir, dstDir);
+
+        await jk_fs.rmDir(jk_fs.join(dstDir, ".git"));
+        await jk_fs.rmDir(jk_fs.join(dstDir, ".turbo"));
+        await jk_fs.rmDir(jk_fs.join(dstDir, "node_modules"));
+
+        console.log(`✅  Package ${jk_term.C_GREEN + packageName + jk_term.T_RESET} has been updated.`);
     }
-
-    // Case of a symlink link.
-    try { await jk_fs.unlink(dstDir); } catch {}
-
-    // Case of an existing directory.
-    try { await jk_fs.rmDir(dstDir); } catch {}
-
-    await jk_fs.copyDirectory(srcDir, dstDir);
-
-    await jk_fs.rmDir(jk_fs.join(dstDir, ".git"));
-    await jk_fs.rmDir(jk_fs.join(dstDir, ".turbo"));
-    await jk_fs.rmDir(jk_fs.join(dstDir, "node_modules"));
-
-    console.log(`✅  Package ${jk_term.C_GREEN + packageName + jk_term.T_RESET} has been updated.`);
 }
 
 //endregion
@@ -1116,15 +1126,16 @@ async function startUp() {
             await execLinkAddPackage();
         })
 
-        .command("link-update <packageName>", "Update the linked package in the current install.", (yargs) => {
+        .command("link-update <packageNames..>", "Update the linked packages in the current install.", (yargs) => {
             return yargs
-                .positional('packageName', {
+                .positional('packageNames', {
                     type: 'string',
-                    describe: 'The package to link.',
+                    array: true,
+                    describe: 'The packages to link.',
                     demandOption: true,
                 });
         }, async (argv) => {
-            await execLinkUpdatePackage({packageName: argv.packageName});
+            await execLinkUpdatePackage({packageNames: argv.packageNames});
         })
 
         .command("ws-add <url>", "Clone a git repository into the workspace.", (yargs) => {
