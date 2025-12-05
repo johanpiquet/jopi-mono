@@ -952,10 +952,9 @@ async function execLinkUpdatePackage({packageNames}: {packageNames: string[]}) {
 
     for (let packageName of packageNames) {
         let srcDir = config[packageName] as string;
-
         let dstDir = jk_fs.join(nodeModulesDir, packageName);
 
-        if (dstDir.includes(srcDir + "/") || dstDir.includes(srcDir + "\\")) {
+        if (nodeModulesDir.includes(srcDir + "/") || nodeModulesDir.includes(srcDir + "\\")) {
             console.error("The destination is inside the source directory. Please move it outside!.")
             process.exit(1);
         }
@@ -974,9 +973,26 @@ async function execLinkUpdatePackage({packageNames}: {packageNames: string[]}) {
 
         await jk_fs.copyDirectory(srcDir, dstDir);
 
+        // Remove folders causing troubles.
         await jk_fs.rmDir(jk_fs.join(dstDir, ".git"));
         await jk_fs.rmDir(jk_fs.join(dstDir, ".turbo"));
         await jk_fs.rmDir(jk_fs.join(dstDir, "node_modules"));
+
+        // Update .bin directory
+        let pkgJson = await jk_fs.readJsonFromFile(jk_fs.join(srcDir, "package.json"))
+
+        if (pkgJson.bin) {
+            const binDir = jk_fs.join(nodeModulesDir, ".bin");
+            await jk_fs.mkDir(binDir);
+
+            for (let binName in pkgJson.bin) {
+                let binFilePath = jk_fs.join(srcDir, pkgJson.bin[binName]);
+
+                // Remove the current one.
+                try { await jk_fs.unlink(jk_fs.join(binDir, binName)); } catch { }
+                await jk_fs.symlink(binFilePath, jk_fs.join(binDir, binName));
+            }
+        }
 
         console.log(`✅  Package ${jk_term.C_GREEN + packageName + jk_term.T_RESET} has been updated.`);
     }
