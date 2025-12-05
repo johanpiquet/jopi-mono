@@ -917,6 +917,12 @@ async function execLinkAddPackage() {
 
     config[packageName] = jk_fs.dirname(pkgJsonFilePath);
     await jk_fs.writeTextToFile(configFile, JSON.stringify(config, null, 4));
+
+    console.log(`✅  Package ${jk_term.C_GREEN + packageName + jk_term.T_RESET} is now linked.`);
+    console.log(`You can now use ${jk_term.C_BLUE}jopi-mono link-update ${packageName}${jk_term.T_RESET} to update it.`);
+
+    let list = Object.keys(config).filter(x => x !== packageName);
+    if (list.length) console.log(`Other available packages: ${jk_term.C_GREEN}${list.join(", ")}${jk_term.T_RESET}`);
 }
 
 async function execLinkUpdatePackage({packageName}: {packageName: string}) {
@@ -962,6 +968,8 @@ async function execLinkUpdatePackage({packageName}: {packageName: string}) {
     await jk_fs.rmDir(jk_fs.join(dstDir, ".git"));
     await jk_fs.rmDir(jk_fs.join(dstDir, ".turbo"));
     await jk_fs.rmDir(jk_fs.join(dstDir, "node_modules"));
+
+    console.log(`✅  Package ${jk_term.C_GREEN + packageName + jk_term.T_RESET} has been updated.`);
 }
 
 //endregion
