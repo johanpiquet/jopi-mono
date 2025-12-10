@@ -34,7 +34,8 @@
     "test:versions-revert": "npx jopi-mono versions-revert",
     "test:publish:jopi-mono": "npx jopi-mono publish jopi-mono",
     "test:link-add": "npx jopi-mono link-add",
-    "test:link-update": "cd ../../test && npx jopi-mono link-update jopijs jopi-toolkit"
+    "test:link-update": "cd ../../test && npx jopi-mono link-update jopijs jopi-toolkit",
+    "dev:tsc": "npx tsc --watch"
   },
   "devDependencies": {
     "@types/bun": "latest",
