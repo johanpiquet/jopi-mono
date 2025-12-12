@@ -71,13 +71,7 @@ function saveCacheFile_json(fileName: string, content: any, options?: CacheFileO
 
 async function getCacheFile(fileName: string, options?: CacheFileOptions): Promise<string | undefined> {
     let filePath = getCacheFilePath(fileName, options);
-
-    try {
-        return await jk_fs.readTextFromFile(filePath);
-    }
-    catch {
-        return undefined;
-    }
+    return await jk_fs.readTextFromFile(filePath);
 }
 
 async function saveCacheFile(fileName: string, content: string, options?: CacheFileOptions): Promise<void> {
@@ -899,7 +893,7 @@ async function execLinkAddPackage() {
     let packageName = "";
     let pkgJson: any;
 
-    try { pkgJson = JSON.parse(await jk_fs.readTextFromFile(pkgJsonFilePath)); }
+    try { pkgJson = JSON.parse(await jk_fs.readTextFromFile(pkgJsonFilePath, true)); }
     catch { throw `Invalid package.json (${pkgJsonFilePath})`; }
     //
     if (!pkgJson.name) throw "The package must have a name. See package.json";
