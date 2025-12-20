@@ -979,11 +979,19 @@ async function execLinkUpdatePackage({packageNames}: {packageNames: string[]}) {
             const binDir = jk_fs.join(nodeModulesDir, ".bin");
             await jk_fs.mkDir(binDir);
 
+            if (typeof(pkgJson.bin)==="string") {
+                let bin = pkgJson.bin;
+                pkgJson.bin = {};
+                pkgJson.bin[pkgJson.name] = bin;
+            }
+
             for (let binName in pkgJson.bin) {
                 let binFilePath = jk_fs.join(srcDir, pkgJson.bin[binName]);
 
                 // Remove the current one.
                 try { await jk_fs.unlink(jk_fs.join(binDir, binName)); } catch { }
+
+                //console.log(`> Installing bin tool ${binName}: ${binFilePath} --> ${jk_fs.join(binDir, binName)}`)
                 await jk_fs.symlink(binFilePath, jk_fs.join(binDir, binName));
             }
         }
