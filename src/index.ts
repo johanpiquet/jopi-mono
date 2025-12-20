@@ -6,6 +6,7 @@ import {execFileSync, execSync} from 'node:child_process';
 import * as jk_fs from "jopi-toolkit/jk_fs";
 import * as jk_timer from "jopi-toolkit/jk_timer";
 import * as jk_term from "jopi-toolkit/jk_term";
+import * as jk_app from "jopi-toolkit/jk_app";
 
 import yargs from 'yargs';
 import {hideBin} from 'yargs/helpers';
@@ -24,6 +25,13 @@ interface PackageInfos {
     packageHash?: string;
     isPrivate: boolean;
     isValidForPublish: boolean;
+}
+
+interface IsPackageJson {
+    name?: string;
+    version?: string;
+    dependencies?: Record<string, string>;
+    devDependencies?: Record<string, string>;
 }
 
 //region Cache
@@ -920,6 +928,33 @@ async function execLinkAddPackage() {
 }
 
 async function execLinkUpdatePackage({packageNames}: {packageNames: string[]}) {
+    async function patchNpmDependencies(npmDepList: Record<string, string>) {
+        let hasChanged = false;
+
+        for (let depName in npmDepList) {
+            let depVersion = npmDepList[depName];
+
+            if (depVersion.startsWith("workspace:")) {
+                let foundDir = await jk_app.findNodePackageDir(depName);
+
+                if (foundDir) {
+                    let targetPkgJson = await jk_fs.readJsonFromFile<IsPackageJson>(jk_fs.join(foundDir, "package.json"));
+
+                    if (targetPkgJson) {
+                        let version =  targetPkgJson.version;
+
+                        if (version) {
+                            hasChanged = true;
+                            npmDepList[depName] = version;
+                        }
+                    }
+                }
+            }
+        }
+
+        return hasChanged;
+    }
+
     const homeDir = os.homedir();
     const configFile = jk_fs.join(homeDir, ".config", "jopi-mono", "link-packages.json");
     let config: any = {};
@@ -997,6 +1032,31 @@ async function execLinkUpdatePackage({packageNames}: {packageNames: string[]}) {
         }
 
         console.log(`✅  Package ${jk_term.C_GREEN + packageName + jk_term.T_RESET} has been updated.`);
+    }
+
+    // Update workspace:*
+    //
+    for (let packageName of packageNames) {
+        let dstDir = jk_fs.join(nodeModulesDir, packageName);
+        let pkgJson = await jk_fs.readJsonFromFile<IsPackageJson>(jk_fs.join(dstDir, "package.json"));
+
+        let hasChanges = false;
+
+        if (pkgJson.dependencies) {
+            if (await patchNpmDependencies(pkgJson.dependencies)) {
+                hasChanges = true;
+            }
+        }
+
+        if (pkgJson.devDependencies) {
+            if (await patchNpmDependencies(pkgJson.devDependencies)) {
+                hasChanges = true;
+            }
+        }
+
+        if (hasChanges) {
+            await jk_fs.writeTextToFile(jk_fs.join(dstDir, "package.json"), JSON.stringify(pkgJson, null, 4));
+        }
     }
 }
 
