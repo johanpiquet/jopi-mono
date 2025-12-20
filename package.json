@@ -28,7 +28,7 @@
     "build": "tsc",
     "clean": "rm -rf ./dist .turbo tsconfig.tsbuildinfo",
     "tsc": "tsc",
-    "bun-publish": "npx tsc && bun publish",
+    "jopiLink": "npx jopi-mono link-add",
     "untrack": "git rm -r --cached -- ./dist/**;",
     "test:versions": "npx jopi-mono versions",
     "test:versions-revert": "npx jopi-mono versions-revert",
