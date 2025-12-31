@@ -35,7 +35,8 @@
     "test:publish:jopi-mono": "npx jopi-mono publish jopi-mono",
     "test:link-add": "npx jopi-mono link-add",
     "test:link-update": "cd ../../temp && npx jopi-mono link-update jopijs jopi-toolkit",
-    "dev:tsc": "npx tsc --watch"
+    "dev:tsc": "tsc --watch",
+    "dev:tsc-check": "tsc --noEmit"
   },
   "devDependencies": {
     "@types/bun": "latest",
