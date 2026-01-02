@@ -1,15 +1,15 @@
 import * as fs from "node:fs/promises";
 import * as path from "node:path";
 import * as os from "node:os";
-import {applyEdits, type EditResult, modify} from 'jsonc-parser';
-import {execFileSync, execSync} from 'node:child_process';
+import { applyEdits, type EditResult, modify } from 'jsonc-parser';
+import { execFileSync, execSync } from 'node:child_process';
 import * as jk_fs from "jopi-toolkit/jk_fs";
 import * as jk_timer from "jopi-toolkit/jk_timer";
 import * as jk_term from "jopi-toolkit/jk_term";
 import * as jk_app from "jopi-toolkit/jk_app";
 
 import yargs from 'yargs';
-import {hideBin} from 'yargs/helpers';
+import { hideBin } from 'yargs/helpers';
 import * as process from "node:process";
 
 const VERSION = "2.2";
@@ -150,7 +150,7 @@ async function searchWorkspaceDir(): Promise<string> {
     return process.cwd();
 }
 
-async function searchPackageJsonFile(): Promise<string|undefined> {
+async function searchPackageJsonFile(): Promise<string | undefined> {
     let currentDir = process.cwd();
 
     while (currentDir !== path.parse(currentDir).root) {
@@ -366,6 +366,8 @@ async function findPackageManager(): Promise<{ name: string; version: string; ve
         process.exit(1);
     }
 
+    if (!packageManager) packageManager = "bun@1.3.0";
+
     let idx = packageManager.indexOf("@");
     let name = packageManager.substring(0, idx);
     let version = packageManager.substring(idx + 1);
@@ -561,7 +563,7 @@ async function packThisPackage(pkgInfos: PackageInfos, outputDir: string) {
     let genFileName = pkgInfos.name + "-" + pkgInfos.version + ".tgz";
     let genFilePath = path.join(pkgDir, genFileName);
 
-    execFileSync("npm", ["pack"], {stdio: 'inherit', cwd: pkgDir, shell: false});
+    execFileSync("npm", ["pack"], { stdio: 'inherit', cwd: pkgDir, shell: false });
 
     let finalFilePath = path.join(outputDir, genFileName);
     await fs.rename(genFilePath, finalFilePath);
@@ -571,14 +573,14 @@ async function packThisPackage(pkgInfos: PackageInfos, outputDir: string) {
 
 async function execPackageCommand(params: { package: string, dir?: string }) {
     const pkgInfos = await findPackageJsonFiles();
-    
+
     let thisPkgInfo = pkgInfos[params.package];
-    
+
     if (!thisPkgInfo) {
         console.log("❌  The package " + params.package + " does not exist.");
         process.exit(1);
     }
-    
+
     if (!params.dir) params.dir = "packageArchives";
 
     console.log("✅  Creating the package for", thisPkgInfo.name);
@@ -927,7 +929,7 @@ async function execLinkAddPackage() {
     if (list.length) console.log(`Other available packages: ${jk_term.C_GREEN}${list.join(", ")}${jk_term.T_RESET}`);
 }
 
-async function execLinkUpdatePackage({packageNames}: {packageNames: string[]}) {
+async function execLinkUpdatePackage({ packageNames }: { packageNames: string[] }) {
     async function patchNpmDependencies(npmDepList: Record<string, string>) {
         let hasChanged = false;
 
@@ -941,7 +943,7 @@ async function execLinkUpdatePackage({packageNames}: {packageNames: string[]}) {
                     let targetPkgJson = await jk_fs.readJsonFromFile<IsPackageJson>(jk_fs.join(foundDir, "package.json"));
 
                     if (targetPkgJson) {
-                        let version =  targetPkgJson.version;
+                        let version = targetPkgJson.version;
 
                         if (version) {
                             hasChanged = true;
@@ -1014,7 +1016,7 @@ async function execLinkUpdatePackage({packageNames}: {packageNames: string[]}) {
             const binDir = jk_fs.join(nodeModulesDir, ".bin");
             await jk_fs.mkDir(binDir);
 
-            if (typeof(pkgJson.bin)==="string") {
+            if (typeof (pkgJson.bin) === "string") {
                 let bin = pkgJson.bin;
                 pkgJson.bin = {};
                 pkgJson.bin[pkgJson.name] = bin;
@@ -1071,7 +1073,7 @@ async function checkNpmAuth(): Promise<void> {
         gNpmUser = await gPackageManager.whoIAm();
         console.log(`🌟 Authenticated as: ${gNpmUser}`);
         return;
-    } catch(e:any) {
+    } catch (e: any) {
         if (!e.message.includes("ENEEDAUTH")) console.log(e);
     }
 
@@ -1093,10 +1095,10 @@ async function selectPackageManagerDriver() {
         return;
     }
 
-    if (packageManager.name==="bun") {
+    if (packageManager.name === "bun") {
         gPackageManager = new BunPackageManager();
-    } else if (packageManager.name==="yarn") {
-        if (packageManager.versionMajor<3) {
+    } else if (packageManager.name === "yarn") {
+        if (packageManager.versionMajor < 3) {
             console.log("Please use yarn (>=v3) as package manager");
         }
         gPackageManager = new YarnPackageManager();
@@ -1166,7 +1168,7 @@ async function startUp() {
                     demandOption: false
                 });
         }, async (argv) => {
-            await execPackageCommand({package: argv.package as string, dir: argv.dir});
+            await execPackageCommand({ package: argv.package as string, dir: argv.dir });
         })
 
         .command("versions-revert", "Revert package version number to the public version.", (yargs) => {
@@ -1213,7 +1215,7 @@ async function startUp() {
                     demandOption: true,
                 });
         }, async (argv) => {
-            await execLinkUpdatePackage({packageNames: argv.packageNames});
+            await execLinkUpdatePackage({ packageNames: argv.packageNames });
         })
 
         .command("ws-add <url>", "Clone a git repository into the workspace.", (yargs) => {
@@ -1305,7 +1307,7 @@ class BunPackageManager implements PackageManager {
     readonly workspaceRefString: string = "workspace:^";
 
     async publish(cwd: string) {
-        execSync("npm publish --access public", {stdio: 'pipe', cwd});
+        execSync("npm publish --access public", { stdio: 'pipe', cwd });
     }
 
     async cleanCache() {
@@ -1369,7 +1371,7 @@ class YarnPackageManager implements PackageManager {
 
     async publish(cwd: string) {
         // Don't use yarn npm publish since doesn't support piloted mode.
-        execSync("yarn npm publish --access public", {stdio: 'pipe', cwd});
+        execSync("yarn npm publish --access public", { stdio: 'pipe', cwd });
     }
 
     async cleanCache() {
@@ -1385,7 +1387,7 @@ class YarnPackageManager implements PackageManager {
     }
 
     async whoIAm(): Promise<string> {
-        let r = execSync("yarn npm whoami", {stdio: 'pipe', encoding: 'utf-8'});
+        let r = execSync("yarn npm whoami", { stdio: 'pipe', encoding: 'utf-8' });
         let lines = r.toString().trim().split("\n");
 
         if (lines[0].includes("YN0000:")) {
@@ -1408,7 +1410,7 @@ class YarnPackageManager implements PackageManager {
         let r = execSync("yarn config get npmRegistryServer", { stdio: 'pipe', encoding: 'utf-8' });
         let url = r.toString().trim();
 
-        if (url.split("\n").length>1) {
+        if (url.split("\n").length > 1) {
             throw new Error(`Yarn can't get registry url`);
         }
 
