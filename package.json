@@ -1,5 +1,5 @@
 {
-  "version": "2.0.95",
+  "version": "2.0.96",
   "name": "jopi-mono",
   "license": "MIT",
   "homepage": "https://github.com/johanpiquet/jopi-mono",
@@ -53,6 +53,6 @@
     "yargs": "^18.0.0"
   },
   "bin": "bin/jopi-mono.js",
-  "publishedDate": "1/2/2026",
+  "publishedDate": "1/14/2026",
   "publicPublishedDate": "12/20/2025"
 }

@@ -359,7 +359,11 @@ async function findPackageManager(): Promise<{ name: string; version: string; ve
         let packageJson = await jk_fs.readTextFromFile(jk_fs.join(wpDir, "package.json"));
         let asJson = JSON.parse(packageJson);
         packageManager = asJson.jopiUsePackageManager;
-        if (!packageManager) packageManager = asJson.packageManager;
+        
+        if (!packageManager) {
+            packageManager = asJson.packageManager;
+            if (!packageManager) packageManager = "bun@1.3.0";
+        }
     }
     catch {
         console.error("Can't read package.json");
